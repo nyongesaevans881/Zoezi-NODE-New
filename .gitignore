@@ -47,10 +47,6 @@ pids
 *.seed
 *.pid.lock
 
-# MongoDB data dumps
-dump/
-*.bson
-*.json
 
 # Uploads / public assets (if not meant for version control)
 uploads/
