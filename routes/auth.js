@@ -239,7 +239,7 @@ router.post('/change-password', async (req, res) => {
 router.post('/user-data', async (req, res) => {
   try {
     const { userId, userType } = req.body;
-    
+
     if (!userId || !userType) {
       return res.status(400).json({ 
         status: 'error', 
@@ -273,6 +273,8 @@ router.post('/user-data', async (req, res) => {
         message: 'User not found' 
       });
     }
+
+    console.log(`user`, user);
 
     return res.status(200).json({ 
       status: 'success', 

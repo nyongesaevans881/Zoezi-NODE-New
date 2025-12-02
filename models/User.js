@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema({
   phone: { type: String, required: true, trim: true },
   idNumber: { type: String, required: true, trim: true },
   dob: { type: Date, required: true },
-  userType: { type: String, default: 'user' },
+  userType: { type: String, default: 'student' },
   password: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   courses: [
@@ -31,7 +31,6 @@ const userSchema = new mongoose.Schema({
         phone: { type: String },
         transactionId: { type: String },
         amount: { type: Number },
-        checkoutRequestId: { type: String },
         timeOfPayment: { type: Date }
       },
       assignmentStatus: { type: String, enum: ['PENDING', 'ASSIGNED', 'CANCELLED'], default: 'PENDING' },

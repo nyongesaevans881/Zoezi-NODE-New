@@ -23,7 +23,7 @@ cloudinary.config({
 
 // Multer in-memory storage
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
@@ -89,10 +89,10 @@ router.get('/profile', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.userId)
     if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
-    
-    return res.status(200).json({ 
-      status: 'success', 
-      data: user 
+
+    return res.status(200).json({
+      status: 'success',
+      data: user
     })
   } catch (err) {
     console.error('Get profile error:', err)
@@ -106,6 +106,7 @@ router.get('/:id/courses', verifyToken, async (req, res) => {
     const { id } = req.params
     if (req.userId !== id) return res.status(403).json({ status: 'error', message: 'Forbidden' })
     const user = await User.findById(id).select('courses')
+      .populate('courses.courseId', 'coverImage description duration durationType');
     if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
     return res.status(200).json({ status: 'success', data: user.courses })
   } catch (err) {
@@ -157,7 +158,6 @@ router.post('/enroll', verifyToken, async (req, res) => {
         phone: paymentData?.phone || null,
         transactionId: paymentData?.transactionId || null,
         amount: paymentData?.amount || null,
-        checkoutRequestId: paymentData?.checkoutRequestId || null,
         timeOfPayment: paymentData?.timeOfPayment ? new Date(paymentData.timeOfPayment) : (paymentData?.timeOfPayment ? new Date(paymentData.timeOfPayment) : null)
       },
       enrolledAt: new Date(),
@@ -235,26 +235,26 @@ router.post('/enroll', verifyToken, async (req, res) => {
 router.put('/:id/profile', verifyToken, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const { id } = req.params;
-    const { 
-      currentLocation, 
-      nextOfKinName, 
-      nextOfKinRelationship, 
-      nextOfKinPhone, 
-      isActive, 
+    const {
+      currentLocation,
+      nextOfKinName,
+      nextOfKinRelationship,
+      nextOfKinPhone,
+      isActive,
       isPublicProfileEnabled,
-      userType 
+      userType
     } = req.body;
 
     // Verify user owns this profile or is admin
     if (req.userId !== id) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({ 
-        status: 'error', 
-        message: 'Forbidden' 
+      return res.status(403).json({
+        status: 'error',
+        message: 'Forbidden'
       });
     }
 
@@ -271,9 +271,9 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
     } else {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Invalid user type' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
       });
     }
 
@@ -281,15 +281,15 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
     if (!user) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        status: 'error', 
-        message: 'User not found' 
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
       });
     }
 
     // Update profile fields
     const updateData = {};
-    
+
     // Location field (different field names in different models)
     if (currentLocation !== undefined) {
       if (userType === 'student' || userType === 'alumni') {
@@ -319,8 +319,8 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    return res.status(200).json({ 
-      status: 'success', 
+    return res.status(200).json({
+      status: 'success',
       message: 'Profile updated successfully',
       data: updatedUser
     });
@@ -329,9 +329,9 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
     await session.abortTransaction();
     session.endSession();
     console.error('Update profile error:', err);
-    return res.status(500).json({ 
-      status: 'error', 
-      message: 'Failed to update profile' 
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to update profile'
     });
   }
 });
@@ -340,7 +340,7 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
 router.post('/:id/profile-picture', verifyToken, upload.single('profilePicture'), async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const { id } = req.params;
     const { userType } = req.body;
@@ -349,18 +349,18 @@ router.post('/:id/profile-picture', verifyToken, upload.single('profilePicture')
     if (req.userId !== id) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({ 
-        status: 'error', 
-        message: 'Forbidden' 
+      return res.status(403).json({
+        status: 'error',
+        message: 'Forbidden'
       });
     }
 
     if (!req.file) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'No image file provided' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'No image file provided'
       });
     }
 
@@ -377,9 +377,9 @@ router.post('/:id/profile-picture', verifyToken, upload.single('profilePicture')
     } else {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Invalid user type' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
       });
     }
 
@@ -387,9 +387,9 @@ router.post('/:id/profile-picture', verifyToken, upload.single('profilePicture')
     if (!user) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        status: 'error', 
-        message: 'User not found' 
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
       });
     }
 
@@ -416,8 +416,8 @@ router.post('/:id/profile-picture', verifyToken, upload.single('profilePicture')
     await session.commitTransaction();
     session.endSession();
 
-    return res.status(200).json({ 
-      status: 'success', 
+    return res.status(200).json({
+      status: 'success',
       message: 'Profile picture updated successfully',
       data: {
         profilePicture: updatedUser.profilePicture
@@ -428,24 +428,24 @@ router.post('/:id/profile-picture', verifyToken, upload.single('profilePicture')
     await session.abortTransaction();
     session.endSession();
     console.error('Profile picture upload error:', err);
-    
+
     if (err.message === 'Only image files are allowed') {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Only image files are allowed' 
-      });
-    }
-    
-    if (err.message && err.message.includes('File too large')) {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'File size must be less than 5MB' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Only image files are allowed'
       });
     }
 
-    return res.status(500).json({ 
-      status: 'error', 
-      message: 'Failed to upload profile picture' 
+    if (err.message && err.message.includes('File too large')) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'File size must be less than 5MB'
+      });
+    }
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to upload profile picture'
     });
   }
 });
@@ -454,7 +454,7 @@ router.post('/:id/profile-picture', verifyToken, upload.single('profilePicture')
 router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const { id } = req.params;
     const { userType } = req.body;
@@ -463,9 +463,9 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     if (req.userId !== id) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({ 
-        status: 'error', 
-        message: 'Forbidden' 
+      return res.status(403).json({
+        status: 'error',
+        message: 'Forbidden'
       });
     }
 
@@ -482,9 +482,9 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     } else {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Invalid user type' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
       });
     }
 
@@ -492,9 +492,9 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     if (!user) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        status: 'error', 
-        message: 'User not found' 
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
       });
     }
 
@@ -506,7 +506,7 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     // Remove profile picture from user
     const updatedUser = await model.findByIdAndUpdate(
       id,
-      { 
+      {
         profilePicture: {
           url: null,
           cloudinaryId: null
@@ -518,8 +518,8 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    return res.status(200).json({ 
-      status: 'success', 
+    return res.status(200).json({
+      status: 'success',
       message: 'Profile picture removed successfully',
       data: {
         profilePicture: updatedUser.profilePicture
@@ -530,9 +530,9 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     await session.abortTransaction();
     session.endSession();
     console.error('Remove profile picture error:', err);
-    return res.status(500).json({ 
-      status: 'error', 
-      message: 'Failed to remove profile picture' 
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to remove profile picture'
     });
   }
 });
