@@ -36,6 +36,17 @@ app.use('/admissions', require('./routes/admissionsRoutes'));
 app.use('/students', require('./routes/studentRoutes'));
 app.use('/alumni', require('./routes/alumniRoutes'));
 app.use('/mpesa', require('./routes/mpesa'));
+app.use('/tutors', require('./routes/tutorRoutes'));
+app.use('/courses', require('./routes/courseRoutes'));
+app.use('/auth', require('./routes/auth'));
+app.use('/users', require('./routes/userRoutes'));
+app.use('/groups', require('./routes/groupRoutes'));
+app.use('/group-curriculum', require('./routes/groupCurriculumRoutes'));
+app.use('/curriculums', require('./routes/curriculumRoutes'));
+app.use('/student-curriculum', require('./routes/studentCurriculumRoutes'));
+app.use('/certification', require('./routes/certificationRoutes'));
+app.use('/admin', require('./routes/adminRoutes'));
+app.use('/finance', require('./routes/financeRoutes'));
 
 // Basic health check route
 app.get('/api/health', (req, res) => {

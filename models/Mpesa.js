@@ -14,6 +14,20 @@ const paymentSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: true,
+    },
+    // New fields to label and track usage of a transaction
+    purpose: {
+      type: String,
+      enum: ['fee_payment', 'course_purchase', 'subscription', 'other'],
+      default: 'other',
+    },
+    purposeMeta: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    used: {
+      type: Boolean,
+      default: false,
     }
   },
   {

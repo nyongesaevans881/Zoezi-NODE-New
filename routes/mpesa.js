@@ -92,7 +92,7 @@ router.post("/stk", generateToken, asyncHandler(async (req, res) => {
 // Results posted on callback
 router.post("/resultcghbnsjsxhHJSM", (req, res) => {
     const callbackData = req.body;
-    const stkCallback = callbackData.Body.stkCallback;
+    const stkCallback = callbackData.Body.stkCallback; 
     const resultCode = stkCallback.ResultCode;
 
     const checkoutRequestId = stkCallback.CheckoutRequestID;
@@ -189,6 +189,8 @@ router.post("/paymentStatus", generateToken, asyncHandler(async (req, res) => {
         )
 
         const resultCode = parseInt(response.data.ResultCode, 10);
+        const metadata = response.data.CallbackMetadata?.Item || [];
+        console.log('metadata', metadata)
 
         let message = { status: "unknown" };
 
@@ -220,7 +222,7 @@ router.post("/paymentStatus", generateToken, asyncHandler(async (req, res) => {
 
         res.status(200).json(response.data);
     } catch (err) {
-        console.error("Status check error:", err.message);
+        console.error("Status check error:", err);
         res.status(400).json({ error: "Failed to check Payment status", details: err.message });
     }
 

@@ -10,6 +10,7 @@ const alumniSchema = new mongoose.Schema({
   password: { type: String, required: true }, // hashed password
   dateOfBirth: { type: Date },
   gender: { type: String },
+  userType: { type: String, default: 'alumni' },
   
   // Admission Info
   admissionNumber: { type: String, unique: true, sparse: true },

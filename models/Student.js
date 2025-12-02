@@ -10,6 +10,7 @@ const studentSchema = new mongoose.Schema({
   password: { type: String, required: true }, // hashed password
   dateOfBirth: { type: Date },
   gender: { type: String },
+    userType: { type: String, default: 'student' },
   
   // Admission Info
   admissionNumber: { type: String, unique: true, sparse: true }, // set by admin during admit
