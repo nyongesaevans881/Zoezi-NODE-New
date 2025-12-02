@@ -65,7 +65,7 @@ router.get('/', verifyToken, async (req, res) => {
 router.post('/:groupId/items/:itemId/respond', verifyToken, async (req, res) => {
   try {
     const { groupId, itemId } = req.params
-    const { responseText, attachmentUrl, attachmentType, isQuestion, isPublic } = req.body
+    const { responseText, attachments, isQuestion, isPublic } = req.body // Changed from attachmentUrl, attachmentType
 
     const group = await Group.findById(groupId)
     if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
@@ -85,18 +85,26 @@ router.post('/:groupId/items/:itemId/respond', verifyToken, async (req, res) => 
     const student = await User.findById(req.userId).select('firstName lastName').lean()
     if (!item.responses) item.responses = []
 
+    // Process attachments - filter out 'none' type or incomplete attachments
+    const validAttachments = Array.isArray(attachments) 
+      ? attachments.filter(att => 
+          att.type && att.type !== 'none' && 
+          att.url && att.url.trim() && 
+          att.title && att.title.trim()
+        )
+      : []
+
     item.responses.push({
       studentId: req.userId,
       studentName: `${student.firstName} ${student.lastName}`,
       responseText: responseText || '',
-      attachmentUrl: attachmentUrl || '',
-      attachmentType: attachmentType || 'none',
+      attachments: validAttachments, // Changed from single attachment
       isQuestion: isQuestion || false,
       isPublic: isPublic || false
     })
 
     await group.save()
-    return res.status(201).json({ status: 'success', data: { item } })
+    return res.status(201).json({ status: 'success', data: { group } }) // Changed from { item } to { group }
   } catch (err) {
     console.error('Submit response error:', err)
     return res.status(500).json({ status: 'error', message: 'Failed to submit response' })

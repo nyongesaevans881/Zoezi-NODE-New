@@ -84,15 +84,55 @@ function verifyToken(req, res, next) {
   }
 }
 
-// GET /users/profile - get current user's profile data
+// GET /users/profile - get current user's profile data with progress
 router.get('/profile', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.userId)
     if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
 
+    // Calculate completion percentage for each course
+    const Group = require('../models/Group')
+    const coursesWithProgress = await Promise.all(
+      user.courses.map(async (course) => {
+        if (!course.assignedGroup?.groupId) {
+          return { ...course.toObject(), completionPercentage: 0 }
+        }
+
+        try {
+          const group = await Group.findById(course.assignedGroup.groupId)
+          if (!group || !group.curriculumItems || group.curriculumItems.length === 0) {
+            return { ...course.toObject(), completionPercentage: 0 }
+          }
+
+          // Calculate completed items for this specific student in this group
+          const totalItems = group.curriculumItems.length
+          const completedItems = group.curriculumItems.filter(item => 
+            item.isCompleted
+          ).length
+
+          const completionPercentage = totalItems > 0 
+            ? Math.round((completedItems / totalItems) * 100)
+            : 0
+
+          return { 
+            ...course.toObject(), 
+            completionPercentage: Math.min(completionPercentage, 100)
+          }
+        } catch (err) {
+          console.error('Error calculating progress:', err)
+          return { ...course.toObject(), completionPercentage: 0 }
+        }
+      })
+    )
+
+    const userWithProgress = {
+      ...user.toObject(),
+      courses: coursesWithProgress
+    }
+
     return res.status(200).json({
       status: 'success',
-      data: user
+      data: userWithProgress
     })
   } catch (err) {
     console.error('Get profile error:', err)
@@ -533,6 +573,335 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: 'Failed to remove profile picture'
+    });
+  }
+});
+
+
+// Add this route to your user routes file
+router.get('/dashboard/metrics', verifyToken, async (req, res) => {
+  try {
+    const { userType } = req.query;
+    
+    // Determine which model to use based on userType
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'tutor') {
+      model = Tutor;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
+      });
+    }
+
+    // Get user data
+    const user = await model.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
+      });
+    }
+
+    let metrics = {};
+
+    // Student Dashboard Metrics
+    if (userType === 'student') {
+      const Group = require('../models/Group');
+      const Course = require('../models/Course');
+      
+      // Get enrolled courses
+      const enrolledCourses = user.courses || [];
+      
+      // Calculate metrics for each course
+      const coursesWithMetrics = await Promise.all(
+        enrolledCourses.map(async (course) => {
+          let completionPercentage = 0;
+          let nextLesson = null;
+          let isActive = false;
+          let totalAssignments = 0;
+          let pendingAssignments = 0;
+          
+          if (course.assignedGroup?.groupId) {
+            try {
+              const group = await Group.findById(course.assignedGroup.groupId);
+              if (group && group.curriculumItems && group.curriculumItems.length > 0) {
+                // Calculate completion
+                const completedItems = group.curriculumItems.filter(item => 
+                  item.isCompleted
+                ).length;
+                completionPercentage = Math.round((completedItems / group.curriculumItems.length) * 100);
+                
+                // Find next lesson based on release date
+                const now = new Date();
+                const upcomingItems = group.curriculumItems
+                  .filter(item => {
+                    if (!item.releaseDate) return true;
+                    const releaseDateTime = new Date(`${item.releaseDate}T${item.releaseTime || '00:00'}`);
+                    return releaseDateTime > now && !item.isCompleted;
+                  })
+                  .sort((a, b) => {
+                    const dateA = a.releaseDate ? new Date(`${a.releaseDate}T${a.releaseTime || '00:00'}`) : new Date(0);
+                    const dateB = b.releaseDate ? new Date(`${b.releaseDate}T${b.releaseTime || '00:00'}`) : new Date(0);
+                    return dateA - dateB;
+                  });
+                
+                if (upcomingItems.length > 0) {
+                  nextLesson = {
+                    name: upcomingItems[0].name,
+                    type: upcomingItems[0].type,
+                    releaseDate: upcomingItems[0].releaseDate,
+                    releaseTime: upcomingItems[0].releaseTime
+                  };
+                }
+                
+                // Count assignments
+                totalAssignments = group.curriculumItems.length;
+                pendingAssignments = group.curriculumItems.filter(item => !item.isCompleted).length;
+                
+                isActive = true;
+              }
+            } catch (err) {
+              console.error('Error calculating course metrics:', err);
+            }
+          }
+          
+          return {
+            ...course.toObject(),
+            completionPercentage,
+            nextLesson,
+            isActive,
+            totalAssignments,
+            pendingAssignments,
+            daysEnrolled: Math.floor((new Date() - new Date(course.enrolledAt)) / (1000 * 60 * 60 * 24))
+          };
+        })
+      );
+      
+      // Calculate overall metrics
+      const activeCourses = coursesWithMetrics.filter(c => c.isActive);
+      const completedCourses = coursesWithMetrics.filter(c => c.certificationStatus === 'GRADUATED' || c.certificationStatus === 'CERTIFIED');
+      const totalExams = coursesWithMetrics.reduce((sum, course) => sum + (course.exams?.length || 0), 0);
+      const averageScore = coursesWithMetrics.length > 0 
+        ? coursesWithMetrics.reduce((sum, course) => sum + (course.gpa || 0), 0) / coursesWithMetrics.length
+        : 0;
+      
+      metrics = {
+        userType: 'student',
+        profile: {
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          admissionNumber: user.admissionNumber || 'N/A',
+          profilePicture: user.profilePicture?.url
+        },
+        summary: {
+          totalCourses: enrolledCourses.length,
+          activeCourses: activeCourses.length,
+          completedCourses: completedCourses.length,
+          averageCompletion: activeCourses.length > 0 
+            ? Math.round(activeCourses.reduce((sum, course) => sum + course.completionPercentage, 0) / activeCourses.length)
+            : 0,
+          totalExams,
+          averageScore: Math.round(averageScore * 10) / 10,
+          daysSinceJoin: Math.floor((new Date() - new Date(user.createdAt)) / (1000 * 60 * 60 * 24))
+        },
+        courses: coursesWithMetrics,
+        upcomingDeadlines: coursesWithMetrics
+          .flatMap(course => {
+            if (!course.assignedGroup?.groupId) return [];
+            return course.nextLesson ? [{
+              courseName: course.name,
+              lesson: course.nextLesson,
+              daysLeft: course.nextLesson.releaseDate 
+                ? Math.ceil((new Date(`${course.nextLesson.releaseDate}T${course.nextLesson.releaseTime || '00:00'}`) - new Date()) / (1000 * 60 * 60 * 24))
+                : null
+            }] : [];
+          })
+          .sort((a, b) => (a.daysLeft || 999) - (b.daysLeft || 999))
+          .slice(0, 5)
+      };
+    }
+
+    // Tutor Dashboard Metrics
+    else if (userType === 'tutor') {
+      const Group = require('../models/Group');
+      
+      // Get tutor's groups
+      const groups = await Group.find({ tutorId: req.userId });
+      
+      // Get all students across groups
+      const allStudents = groups.flatMap(group => 
+        group.students.map(student => ({
+          ...student.toObject(),
+          groupName: group.name,
+          courseName: group.courseName
+        }))
+      );
+      
+      // Get unique courses
+      const uniqueCourses = [...new Set(groups.map(g => g.courseId.toString()))];
+      
+      // Calculate metrics
+      const totalStudents = allStudents.length;
+      const activeStudents = allStudents.filter(s => {
+        // Check if student has recent activity (within last 30 days)
+        // This would need actual activity tracking - for now using group membership
+        return true;
+      }).length;
+      
+      // Calculate pending responses
+      let pendingResponses = 0;
+      for (const group of groups) {
+        for (const item of group.curriculumItems || []) {
+          for (const response of item.responses || []) {
+            if (!response.tutorRemark && response.studentId.toString() !== req.userId.toString()) {
+              pendingResponses++;
+            }
+          }
+        }
+      }
+      
+      // Calculate completion rates for each group
+      const groupsWithMetrics = await Promise.all(
+        groups.map(async (group) => {
+          let totalItems = group.curriculumItems?.length || 0;
+          let completedItems = group.curriculumItems?.filter(item => item.isCompleted).length || 0;
+          let completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+          
+          // Get recent activity (last 7 days)
+          let recentActivity = 0;
+          if (group.curriculumItems) {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            
+            for (const item of group.curriculumItems) {
+              if (item.responses) {
+                recentActivity += item.responses.filter(r => 
+                  new Date(r.createdAt) > sevenDaysAgo
+                ).length;
+              }
+            }
+          }
+          
+          return {
+            id: group._id,
+            name: group.name,
+            courseName: group.courseName,
+            studentCount: group.students?.length || 0,
+            totalItems,
+            completedItems,
+            completionRate,
+            recentActivity,
+            createdAt: group.createdAt
+          };
+        })
+      );
+      
+      metrics = {
+        userType: 'tutor',
+        profile: {
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          profilePicture: user.profilePicture?.url
+        },
+        summary: {
+          totalGroups: groups.length,
+          totalStudents,
+          activeStudents,
+          totalCourses: uniqueCourses.length,
+          pendingResponses,
+          averageCompletion: groupsWithMetrics.length > 0
+            ? Math.round(groupsWithMetrics.reduce((sum, g) => sum + g.completionRate, 0) / groupsWithMetrics.length)
+            : 0,
+          daysSinceJoin: Math.floor((new Date() - new Date(user.createdAt)) / (1000 * 60 * 60 * 24))
+        },
+        groups: groupsWithMetrics,
+        recentActivity: groupsWithMetrics
+          .filter(g => g.recentActivity > 0)
+          .sort((a, b) => b.recentActivity - a.recentActivity)
+          .slice(0, 5),
+        certifiedStudents: user.certifiedStudents?.length || 0
+      };
+    }
+
+    // Alumni Dashboard Metrics
+    else if (userType === 'alumni') {
+      // Calculate subscription status
+      const currentYear = new Date().getFullYear();
+      const currentSubscription = user.subscriptionPayments?.find(
+        payment => payment.year === currentYear
+      );
+      
+      // Calculate CPD status
+      const currentCpd = user.cpdRecords?.find(
+        cpd => cpd.year === currentYear
+      );
+      
+      // Calculate practice duration
+      let practiceDuration = null;
+      if (user.practicingSince) {
+        const years = new Date().getFullYear() - new Date(user.practicingSince).getFullYear();
+        practiceDuration = years > 0 ? `${years} year${years > 1 ? 's' : ''}` : 'Less than a year';
+      }
+      
+      metrics = {
+        userType: 'alumni',
+        profile: {
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          qualification: user.qualification || 'N/A',
+          course: user.course || 'N/A',
+          practiceStatus: user.practiceStatus,
+          practicingSince: user.practicingSince,
+          currentLocation: user.currentLocation,
+          profilePicture: user.profilePicture,
+          bio: user.bio || 'No bio available'
+        },
+        subscription: {
+          currentYear,
+          status: currentSubscription?.status || 'pending',
+          expiryDate: currentSubscription?.expiryDate,
+          profileActive: currentSubscription?.profileActive || false,
+          needsRenewal: currentSubscription ? 
+            new Date(currentSubscription.expiryDate) < new Date() : true
+        },
+        cpd: {
+          currentYear,
+          status: currentCpd?.result || 'not_taken',
+          dateTaken: currentCpd?.dateTaken,
+          score: currentCpd?.score,
+          needsRenewal: !currentCpd || currentCpd.year < currentYear
+        },
+        summary: {
+          graduationYear: user.graduationDate ? new Date(user.graduationDate).getFullYear() : null,
+          yearsSinceGraduation: user.graduationDate ? 
+            new Date().getFullYear() - new Date(user.graduationDate).getFullYear() : null,
+          totalExams: user.exams?.length || 0,
+          practiceDuration,
+          totalCpdRecords: user.cpdRecords?.length || 0,
+          subscriptionPayments: user.subscriptionPayments?.length || 0
+        },
+        exams: user.exams || [],
+        cpdHistory: user.cpdRecords?.slice(-5).reverse() || []
+      };
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      data: metrics
+    });
+    
+  } catch (err) {
+    console.error('Dashboard metrics error:', err);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch dashboard metrics'
     });
   }
 });

@@ -39,7 +39,7 @@ router.get('/:groupId', verifyToken, async (req, res) => {
 // POST /group-curriculum/:groupId/items - Add item to group curriculum
 router.post('/:groupId/items', verifyToken, async (req, res) => {
   try {
-    const { type, name, description, attachmentUrl, attachmentType, releaseDate, releaseTime, dueDate, dueTime } = req.body
+    const { type, name, description, attachments, releaseDate, releaseTime, dueDate, dueTime } = req.body
     const group = await Group.findById(req.params.groupId)
     
     if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
@@ -58,8 +58,9 @@ router.post('/:groupId/items', verifyToken, async (req, res) => {
       type,
       name,
       description: description || '',
-      attachmentUrl: attachmentUrl || '',
-      attachmentType: attachmentType || 'none',
+      attachments: Array.isArray(attachments) 
+        ? attachments.filter(att => att.type !== 'none' && att.url && att.title)
+        : [],
       releaseDate: releaseDate || null,
       releaseTime: releaseTime || '00:00',
       dueDate: dueDate || null,
@@ -81,7 +82,7 @@ router.post('/:groupId/items', verifyToken, async (req, res) => {
 // PUT /group-curriculum/:groupId/items/:itemId - Update item
 router.put('/:groupId/items/:itemId', verifyToken, async (req, res) => {
   try {
-    const { type, name, description, attachmentUrl, attachmentType, releaseDate, releaseTime, dueDate, dueTime, isCompleted } = req.body
+    const { type, name, description, attachments, releaseDate, releaseTime, dueDate, dueTime, isCompleted } = req.body
     const group = await Group.findById(req.params.groupId)
     
     if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
@@ -95,8 +96,11 @@ router.put('/:groupId/items/:itemId', verifyToken, async (req, res) => {
     if (type) item.type = type
     if (name) item.name = name
     if (description !== undefined) item.description = description
-    if (attachmentUrl !== undefined) item.attachmentUrl = attachmentUrl
-    if (attachmentType !== undefined) item.attachmentType = attachmentType
+    if (attachments !== undefined) {
+      item.attachments = Array.isArray(attachments) 
+        ? attachments.filter(att => att.type !== 'none' && att.url && att.title)
+        : []
+    }
     if (releaseDate !== undefined) item.releaseDate = releaseDate
     if (releaseTime !== undefined) item.releaseTime = releaseTime
     if (dueDate !== undefined) item.dueDate = dueDate
@@ -158,8 +162,7 @@ router.post('/:groupId/import-curriculum/:curriculumId', verifyToken, async (req
         type: item.type,
         name: item.name,
         description: item.description,
-        attachmentUrl: item.attachmentUrl,
-        attachmentType: item.attachmentType,
+        attachments: item.attachments || [], // Import multiple attachments
         releaseDate: null,
         releaseTime: '00:00',
         dueDate: null,
@@ -201,8 +204,7 @@ router.post('/:groupId/import-item/:curriculumId/:itemId', verifyToken, async (r
       type: currItem.type,
       name: currItem.name,
       description: currItem.description,
-      attachmentUrl: currItem.attachmentUrl,
-      attachmentType: currItem.attachmentType,
+      attachments: currItem.attachments || [], // Import multiple attachments
       releaseDate: null,
       releaseTime: '00:00',
       dueDate: null,

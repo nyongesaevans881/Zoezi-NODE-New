@@ -107,7 +107,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 // POST /curriculums/:id/items - add item to curriculum
 router.post('/:id/items', verifyToken, async (req, res) => {
   try {
-    const { type, name, description, attachmentUrl, attachmentType } = req.body
+    const { type, name, description, attachments } = req.body // Changed from attachmentUrl, attachmentType
     const curriculum = await Curriculum.findById(req.params.id)
     
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
@@ -127,8 +127,9 @@ router.post('/:id/items', verifyToken, async (req, res) => {
       type,
       name,
       description: description || '',
-      attachmentUrl: attachmentUrl || '',
-      attachmentType: attachmentType || 'none'
+      attachments: Array.isArray(attachments) 
+        ? attachments.filter(att => att.type !== 'none' && att.url && att.title)
+        : [] // Accept array of attachments
     }
     
     curriculum.items.push(newItem)
@@ -144,7 +145,7 @@ router.post('/:id/items', verifyToken, async (req, res) => {
 // PUT /curriculums/:id/items/:itemId - update item
 router.put('/:id/items/:itemId', verifyToken, async (req, res) => {
   try {
-    const { type, name, description, attachmentUrl, attachmentType } = req.body
+    const { type, name, description, attachments } = req.body // Changed from attachmentUrl, attachmentType
     const curriculum = await Curriculum.findById(req.params.id)
     
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
@@ -158,8 +159,11 @@ router.put('/:id/items/:itemId', verifyToken, async (req, res) => {
     if (type) item.type = type
     if (name) item.name = name
     if (description !== undefined) item.description = description
-    if (attachmentUrl !== undefined) item.attachmentUrl = attachmentUrl
-    if (attachmentType !== undefined) item.attachmentType = attachmentType
+    if (attachments !== undefined) {
+      item.attachments = Array.isArray(attachments) 
+        ? attachments.filter(att => att.type !== 'none' && att.url && att.title)
+        : []
+    }
     
     await curriculum.save()
     return res.status(200).json({ status: 'success', data: { curriculum } })

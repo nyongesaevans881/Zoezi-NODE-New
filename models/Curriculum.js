@@ -1,5 +1,16 @@
 const mongoose = require('mongoose')
 
+// Update curriculumItemSchema in your model
+const curriculumItemAttachmentSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['youtube', 'vimeo', 'mp4', 'pdf', 'article', 'document', 'image', 'link', 'none'],
+    default: 'none'
+  },
+  url: { type: String, default: '' },
+  title: { type: String, default: '' }
+}, { _id: true })
+
 const curriculumItemSchema = new mongoose.Schema({
   position: { type: Number, default: 0 },
   type: { 
@@ -9,12 +20,7 @@ const curriculumItemSchema = new mongoose.Schema({
   },
   name: { type: String, required: true },
   description: { type: String, default: '' },
-  attachmentUrl: { type: String, default: '' },
-  attachmentType: { 
-    type: String,
-    enum: ['youtube', 'vimeo', 'mp4', 'pdf', 'article', 'document', 'none'],
-    default: 'none'
-  },
+  attachments: [curriculumItemAttachmentSchema], // Changed from single attachment
   createdAt: { type: Date, default: Date.now }
 })
 
