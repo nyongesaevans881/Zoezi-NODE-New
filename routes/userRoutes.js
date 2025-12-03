@@ -68,7 +68,6 @@ const deleteFromCloudinary = async (publicId) => {
   }
 };
 
-
 // Simple auth middleware
 function verifyToken(req, res, next) {
   const auth = req.headers.authorization || req.headers.Authorization
@@ -84,46 +83,111 @@ function verifyToken(req, res, next) {
   }
 }
 
-// GET /users/profile - get current user's profile data with progress
+// GET /users/:id/courses - get user's enrolled courses (UPDATED)
+router.get('/:id/courses', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params
+    const { userType } = req.query // Get userType from query params
+    console.log("Get courses request for user:", id, "of type:", userType)
+    console.log(`req.query ${JSON.stringify(req.query)}`)
+
+    
+    if (req.userId !== id) return res.status(403).json({ status: 'error', message: 'Forbidden' })
+
+    // Determine which model to use based on userType
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'tutor') {
+      model = Tutor;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
+      });
+    }
+
+    const user = await model.findById(id).select('courses')
+      .populate('courses.courseId', 'coverImage description duration durationType name');
+    
+    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
+    
+    return res.status(200).json({ 
+      status: 'success', 
+      data: user.courses || [] 
+    })
+  } catch (err) {
+    console.error('Get user courses error:', err)
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch courses' })
+  }
+})
+
+// GET /users/profile - get current user's profile data with progress (UPDATED)
 router.get('/profile', verifyToken, async (req, res) => {
   try {
-    const user = await User.findById(req.userId)
+    const { userType } = req.query // Get userType from query params
+    
+    // Determine which model to use based on userType
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'tutor') {
+      model = Tutor;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
+      });
+    }
+
+    const user = await model.findById(req.userId)
     if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
 
-    // Calculate completion percentage for each course
-    const Group = require('../models/Group')
-    const coursesWithProgress = await Promise.all(
-      user.courses.map(async (course) => {
-        if (!course.assignedGroup?.groupId) {
-          return { ...course.toObject(), completionPercentage: 0 }
-        }
-
-        try {
-          const group = await Group.findById(course.assignedGroup.groupId)
-          if (!group || !group.curriculumItems || group.curriculumItems.length === 0) {
+    // Calculate completion percentage for each course (for students AND alumni)
+    let coursesWithProgress = [];
+    
+    if ((userType === 'student' || userType === 'alumni') && user.courses) {
+      const Group = require('../models/Group')
+      coursesWithProgress = await Promise.all(
+        user.courses.map(async (course) => {
+          if (!course.assignedGroup?.groupId) {
             return { ...course.toObject(), completionPercentage: 0 }
           }
 
-          // Calculate completed items for this specific student in this group
-          const totalItems = group.curriculumItems.length
-          const completedItems = group.curriculumItems.filter(item => 
-            item.isCompleted
-          ).length
+          try {
+            const group = await Group.findById(course.assignedGroup.groupId)
+            if (!group || !group.curriculumItems || group.curriculumItems.length === 0) {
+              return { ...course.toObject(), completionPercentage: 0 }
+            }
 
-          const completionPercentage = totalItems > 0 
-            ? Math.round((completedItems / totalItems) * 100)
-            : 0
+            // Calculate completed items for this specific student in this group
+            const totalItems = group.curriculumItems.length
+            const completedItems = group.curriculumItems.filter(item => 
+              item.isCompleted
+            ).length
 
-          return { 
-            ...course.toObject(), 
-            completionPercentage: Math.min(completionPercentage, 100)
+            const completionPercentage = totalItems > 0 
+              ? Math.round((completedItems / totalItems) * 100)
+              : 0
+
+            return { 
+              ...course.toObject(), 
+              completionPercentage: Math.min(completionPercentage, 100)
+            }
+          } catch (err) {
+            console.error('Error calculating progress:', err)
+            return { ...course.toObject(), completionPercentage: 0 }
           }
-        } catch (err) {
-          console.error('Error calculating progress:', err)
-          return { ...course.toObject(), completionPercentage: 0 }
-        }
-      })
-    )
+        })
+      )
+    } else {
+      // For tutors, just return courses as-is
+      coursesWithProgress = user.courses || []
+    }
 
     const userWithProgress = {
       ...user.toObject(),
@@ -140,30 +204,14 @@ router.get('/profile', verifyToken, async (req, res) => {
   }
 })
 
-// GET /users/:id/courses - get user's enrolled courses
-router.get('/:id/courses', verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params
-    if (req.userId !== id) return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    const user = await User.findById(id).select('courses')
-      .populate('courses.courseId', 'coverImage description duration durationType');
-    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
-    return res.status(200).json({ status: 'success', data: user.courses })
-  } catch (err) {
-    console.error('Get user courses error:', err)
-    return res.status(500).json({ status: 'error', message: 'Failed to fetch courses' })
-  }
-})
-
-// POST /users/enroll - enroll user in course (expects userId, courseId, payment)
+// POST /users/enroll - enroll user in course (UPDATED)
 router.post('/enroll', verifyToken, async (req, res) => {
   const session = await mongoose.startSession()
   session.startTransaction()
   try {
     // Accept either `paymentData` (frontend) or legacy `payment` body key
-    const { userId, courseId } = req.body
+    const { userId, courseId, userType } = req.body
     const paymentData = req.body.paymentData || req.body.payment || {}
-    console.log("Enroll request body:", { userId, courseId, paymentData })
 
     // Ensure token user matches provided user or allow admins (not implemented)
     if (req.userId !== userId) {
@@ -171,7 +219,26 @@ router.post('/enroll', verifyToken, async (req, res) => {
       return res.status(403).json({ status: 'error', message: 'Forbidden' })
     }
 
-    const user = await User.findById(userId).session(session)
+    // Determine which model to use based on userType
+    let model;
+    let isStudentOrAlumni = false;
+    if (userType === 'student') {
+      model = User;
+      isStudentOrAlumni = true;
+    } else if (userType === 'tutor') {
+      model = Tutor;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+      isStudentOrAlumni = true;
+    } else {
+      await session.abortTransaction(); session.endSession()
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
+      });
+    }
+
+    const user = await model.findById(userId).session(session)
     const course = await Course.findById(courseId).session(session)
     if (!user || !course) {
       await session.abortTransaction(); session.endSession()
@@ -209,27 +276,30 @@ router.post('/enroll', verifyToken, async (req, res) => {
     user.courses.push(enrollment)
     await user.save({ session })
 
-    // Update course enrolledStudents
-    const studentRecord = {
-      studentId: user._id,
-      name: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      phone: user.phone,
-      enrollmentTime: enrollment.enrolledAt,
-      payment: {
-        status: enrollment.payment.status,
-        phone: enrollment.payment.phone,
-        transactionId: enrollment.payment.transactionId,
-        amount: enrollment.payment.amount || null,
-        timeOfPayment: enrollment.payment.timeOfPayment || null
-      },
-      assignmentStatus: enrollment.assignmentStatus || 'PENDING',
-      tutor: null
-    }
+    // Update course enrolledStudents for both students AND alumni
+    if (isStudentOrAlumni) {
+      const studentRecord = {
+        studentId: user._id,
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        phone: user.phone,
+        enrollmentTime: enrollment.enrolledAt,
+        userType: userType, // Add userType to track if student or alumni
+        payment: {
+          status: enrollment.payment.status,
+          phone: enrollment.payment.phone,
+          transactionId: enrollment.payment.transactionId,
+          amount: enrollment.payment.amount || null,
+          timeOfPayment: enrollment.payment.timeOfPayment || null
+        },
+        assignmentStatus: enrollment.assignmentStatus || 'PENDING',
+        tutor: null
+      }
 
-    course.enrolledStudents = course.enrolledStudents || []
-    course.enrolledStudents.push(studentRecord)
-    await course.save({ session })
+      course.enrolledStudents = course.enrolledStudents || []
+      course.enrolledStudents.push(studentRecord)
+      await course.save({ session })
+    }
 
     await session.commitTransaction(); session.endSession()
 
@@ -240,7 +310,11 @@ router.post('/enroll', verifyToken, async (req, res) => {
           { transactionId: String(enrollment.payment.transactionId) },
           {
             purpose: 'course_purchase',
-            purposeMeta: { userId: String(userId), courseId: String(courseId) },
+            purposeMeta: { 
+              userId: String(userId), 
+              courseId: String(courseId),
+              userType: userType 
+            },
             used: true
           },
           { new: true }
@@ -576,7 +650,6 @@ router.delete('/:id/profile-picture', verifyToken, async (req, res) => {
     });
   }
 });
-
 
 // Add this route to your user routes file
 router.get('/dashboard/metrics', verifyToken, async (req, res) => {

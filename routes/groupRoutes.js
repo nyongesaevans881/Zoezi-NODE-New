@@ -5,8 +5,9 @@ const jwt = require('jsonwebtoken')
 const Group = require('../models/Group')
 const Tutor = require('../models/Tutor')
 const User = require('../models/User')
+const Alumni = require('../models/Alumni')
 
-const JWT_SECRET = process.env.JWT_SECRET || 'zoezi_secret'
+const JWT_SECRET = process.env.JWT_SECRET
 
 function verifyToken(req, res, next) {
   const auth = req.headers.authorization || req.headers.Authorization
@@ -71,37 +72,112 @@ router.put('/:id', verifyToken, async (req, res) => {
   }
 })
 
-// DELETE /groups/:id
+// DELETE /groups/:id - UPDATED to handle alumni students when deleting group
 router.delete('/:id', verifyToken, async (req, res) => {
+  const session = await mongoose.startSession()
+  session.startTransaction()
   try {
     const { id } = req.params
-    const group = await Group.findById(id)
-    if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(group.tutorId)) return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    await group.remove()
+    const group = await Group.findById(id).session(session)
+    if (!group) {
+      await session.abortTransaction(); session.endSession()
+      return res.status(404).json({ status: 'error', message: 'Group not found' })
+    }
+    
+    if (req.userType !== 'admin' && String(req.userId) !== String(group.tutorId)) {
+      await session.abortTransaction(); session.endSession()
+      return res.status(403).json({ status: 'error', message: 'Forbidden' })
+    }
+    
+    // Before deleting group, unassign all students from this group
+    if (group.students && group.students.length > 0) {
+      // Update Tutor.myStudents
+      const tutor = await Tutor.findById(group.tutorId).session(session)
+      if (tutor && tutor.myStudents) {
+        for (const groupStudent of group.students) {
+          const myStudentEntry = tutor.myStudents.find(s => 
+            String(s.studentId) === String(groupStudent.studentId)
+          )
+          if (myStudentEntry && myStudentEntry.assignedGroup?.groupId?.toString() === id) {
+            myStudentEntry.isAssignedToGroup = false
+            myStudentEntry.assignedGroup = {
+              groupId: null,
+              groupName: null
+            }
+          }
+        }
+        await tutor.save({ session })
+      }
+      
+      // Update User/Alumni courses
+      for (const groupStudent of group.students) {
+        // Check User model first
+        let student = await User.findById(groupStudent.studentId).session(session)
+        
+        if (!student) {
+          // Check Alumni model
+          student = await Alumni.findById(groupStudent.studentId).session(session)
+        }
+        
+        if (student && student.courses) {
+          const courseEntry = student.courses.find(c => 
+            String(c.courseId) === String(group.courseId)
+          )
+          if (courseEntry && courseEntry.assignedGroup?.groupId?.toString() === id) {
+            courseEntry.isAssignedToGroup = false
+            courseEntry.assignedGroup = {
+              groupId: null,
+              groupName: null
+            }
+            await student.save({ session })
+          }
+        }
+      }
+    }
+    
+    await group.remove({ session })
+    
+    await session.commitTransaction(); session.endSession()
     return res.status(200).json({ status: 'success', message: 'Group deleted' })
   } catch (err) {
+    await session.abortTransaction(); session.endSession()
     console.error('Delete group error:', err)
     return res.status(500).json({ status: 'error', message: 'Failed to delete group' })
   }
 })
 
-// POST /groups/:id/add-student
+// POST /groups/:id/add-student - UPDATED to check both User and Alumni
 router.post('/:id/add-student', verifyToken, async (req, res) => {
+  const session = await mongoose.startSession()
+  session.startTransaction()
   try {
     const { id } = req.params
     const { studentId, name } = req.body
     if (!studentId) return res.status(400).json({ status: 'error', message: 'Missing studentId' })
-    const group = await Group.findById(id)
-    if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(group.tutorId)) return res.status(403).json({ status: 'error', message: 'Forbidden' })
+    
+    const group = await Group.findById(id).session(session)
+    if (!group) {
+      await session.abortTransaction(); session.endSession()
+      return res.status(404).json({ status: 'error', message: 'Group not found' })
+    }
+    
+    if (req.userType !== 'admin' && String(req.userId) !== String(group.tutorId)) {
+      await session.abortTransaction(); session.endSession()
+      return res.status(403).json({ status: 'error', message: 'Forbidden' })
+    }
+    
     // Avoid duplicates
-    if ((group.students || []).some(s => String(s.studentId) === String(studentId))) return res.status(409).json({ status: 'error', message: 'Student already in group' })
+    if ((group.students || []).some(s => String(s.studentId) === String(studentId))) {
+      await session.abortTransaction(); session.endSession()
+      return res.status(409).json({ status: 'error', message: 'Student already in group' })
+    }
+    
+    group.students = group.students || []
     group.students.push({ studentId, name })
-    await group.save()
+    await group.save({ session })
     
     // Update tracking on Tutor.myStudents
-    const tutor = await Tutor.findById(group.tutorId)
+    const tutor = await Tutor.findById(group.tutorId).session(session)
     if (tutor && tutor.myStudents) {
       const myStudentEntry = tutor.myStudents.find(s => String(s.studentId) === String(studentId))
       if (myStudentEntry) {
@@ -110,12 +186,26 @@ router.post('/:id/add-student', verifyToken, async (req, res) => {
           groupId: group._id,
           groupName: group.name
         }
-        await tutor.save()
+        await tutor.save({ session })
       }
     }
     
-    // Update tracking on User.courses
-    const student = await User.findById(studentId)
+    // Check both User and Alumni models for student course update
+    let student = await User.findById(studentId).session(session)
+    let isAlumni = false
+    
+    if (!student) {
+      // If not found in User model, check Alumni model
+      student = await Alumni.findById(studentId).session(session)
+      isAlumni = true
+      
+      if (!student) {
+        await session.abortTransaction(); session.endSession()
+        return res.status(404).json({ status: 'error', message: 'Student/Alumni not found' })
+      }
+    }
+    
+    // Update course entry for student/alumni
     if (student && student.courses) {
       const courseEntry = student.courses.find(c => String(c.courseId) === String(group.courseId))
       if (courseEntry) {
@@ -124,31 +214,48 @@ router.post('/:id/add-student', verifyToken, async (req, res) => {
           groupId: group._id,
           groupName: group.name
         }
-        await student.save()
+        await student.save({ session })
       }
     }
     
-    return res.status(200).json({ status: 'success', data: { group } })
+    await session.commitTransaction(); session.endSession()
+    return res.status(200).json({ 
+      status: 'success', 
+      data: { group },
+      message: `${isAlumni ? 'Alumni' : 'Student'} added to group` 
+    })
   } catch (err) {
+    await session.abortTransaction(); session.endSession()
     console.error('Add student error:', err)
     return res.status(500).json({ status: 'error', message: 'Failed to add student' })
   }
 })
 
-// POST /groups/:id/remove-student
+// POST /groups/:id/remove-student - UPDATED to check both User and Alumni
 router.post('/:id/remove-student', verifyToken, async (req, res) => {
+  const session = await mongoose.startSession()
+  session.startTransaction()
   try {
     const { id } = req.params
     const { studentId } = req.body
     if (!studentId) return res.status(400).json({ status: 'error', message: 'Missing studentId' })
-    const group = await Group.findById(id)
-    if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(group.tutorId)) return res.status(403).json({ status: 'error', message: 'Forbidden' })
+    
+    const group = await Group.findById(id).session(session)
+    if (!group) {
+      await session.abortTransaction(); session.endSession()
+      return res.status(404).json({ status: 'error', message: 'Group not found' })
+    }
+    
+    if (req.userType !== 'admin' && String(req.userId) !== String(group.tutorId)) {
+      await session.abortTransaction(); session.endSession()
+      return res.status(403).json({ status: 'error', message: 'Forbidden' })
+    }
+    
     group.students = (group.students || []).filter(s => String(s.studentId) !== String(studentId))
-    await group.save()
+    await group.save({ session })
     
     // Update tracking on Tutor.myStudents
-    const tutor = await Tutor.findById(group.tutorId)
+    const tutor = await Tutor.findById(group.tutorId).session(session)
     if (tutor && tutor.myStudents) {
       const myStudentEntry = tutor.myStudents.find(s => String(s.studentId) === String(studentId))
       if (myStudentEntry) {
@@ -157,12 +264,24 @@ router.post('/:id/remove-student', verifyToken, async (req, res) => {
           groupId: null,
           groupName: null
         }
-        await tutor.save()
+        await tutor.save({ session })
       }
     }
     
-    // Update tracking on User.courses
-    const student = await User.findById(studentId)
+    // Check both User and Alumni models for student course update
+    let student = await User.findById(studentId).session(session)
+    
+    if (!student) {
+      // If not found in User model, check Alumni model
+      student = await Alumni.findById(studentId).session(session)
+      
+      if (!student) {
+        await session.abortTransaction(); session.endSession()
+        return res.status(404).json({ status: 'error', message: 'Student/Alumni not found' })
+      }
+    }
+    
+    // Update course entry for student/alumni
     if (student && student.courses) {
       const courseEntry = student.courses.find(c => String(c.courseId) === String(group.courseId))
       if (courseEntry) {
@@ -171,18 +290,20 @@ router.post('/:id/remove-student', verifyToken, async (req, res) => {
           groupId: null,
           groupName: null
         }
-        await student.save()
+        await student.save({ session })
       }
     }
     
+    await session.commitTransaction(); session.endSession()
     return res.status(200).json({ status: 'success', data: { group } })
   } catch (err) {
+    await session.abortTransaction(); session.endSession()
     console.error('Remove student error:', err)
     return res.status(500).json({ status: 'error', message: 'Failed to remove student' })
   }
 })
 
-// POST /groups/transfer - transfer student between groups
+// POST /groups/transfer - transfer student between groups - UPDATED to check both User and Alumni
 router.post('/transfer', verifyToken, async (req, res) => {
   const session = await mongoose.startSession()
   session.startTransaction()
@@ -192,32 +313,38 @@ router.post('/transfer', verifyToken, async (req, res) => {
       await session.abortTransaction(); session.endSession()
       return res.status(400).json({ status: 'error', message: 'Missing fields' })
     }
+    
     const from = await Group.findById(fromGroupId).session(session)
     const to = await Group.findById(toGroupId).session(session)
     if (!from || !to) {
       await session.abortTransaction(); session.endSession()
       return res.status(404).json({ status: 'error', message: 'Group not found' })
     }
+    
     if (req.userType !== 'admin' && String(req.userId) !== String(from.tutorId) && String(req.userId) !== String(to.tutorId)) {
       await session.abortTransaction(); session.endSession()
       return res.status(403).json({ status: 'error', message: 'Forbidden' })
     }
+    
     const student = (from.students || []).find(s => String(s.studentId) === String(studentId))
     if (!student) {
       await session.abortTransaction(); session.endSession()
       return res.status(404).json({ status: 'error', message: 'Student not in source group' })
     }
+    
     // Remove from source
     from.students = (from.students || []).filter(s => String(s.studentId) !== String(studentId))
+    
     // Add to destination if not present
     if (!(to.students || []).some(s => String(s.studentId) === String(studentId))) {
       to.students.push({ studentId: student.studentId, name: student.name })
     }
+    
     await from.save({ session })
     await to.save({ session })
     
     // Update tracking on Tutor.myStudents
-    const tutor = await Tutor.findById(from.tutorId)
+    const tutor = await Tutor.findById(from.tutorId).session(session)
     if (tutor && tutor.myStudents) {
       const myStudentEntry = tutor.myStudents.find(s => String(s.studentId) === String(studentId))
       if (myStudentEntry) {
@@ -226,22 +353,33 @@ router.post('/transfer', verifyToken, async (req, res) => {
           groupId: to._id,
           groupName: to.name
         }
-        await tutor.save()
+        await tutor.save({ session })
       }
     }
     
-    // Update tracking on User.courses
-    const updatedStudent = await User.findById(studentId)
-    if (updatedStudent && updatedStudent.courses) {
-      // Update course entry for the transfer
-      const courseEntry = updatedStudent.courses.find(c => String(c.courseId) === String(to.courseId))
+    // Check both User and Alumni models for student course update
+    let studentRecord = await User.findById(studentId).session(session)
+    
+    if (!studentRecord) {
+      // If not found in User model, check Alumni model
+      studentRecord = await Alumni.findById(studentId).session(session)
+      
+      if (!studentRecord) {
+        await session.abortTransaction(); session.endSession()
+        return res.status(404).json({ status: 'error', message: 'Student/Alumni not found' })
+      }
+    }
+    
+    // Update course entry for the transfer
+    if (studentRecord && studentRecord.courses) {
+      const courseEntry = studentRecord.courses.find(c => String(c.courseId) === String(to.courseId))
       if (courseEntry) {
         courseEntry.isAssignedToGroup = true
         courseEntry.assignedGroup = {
           groupId: to._id,
           groupName: to.name
         }
-        await updatedStudent.save()
+        await studentRecord.save({ session })
       }
     }
     

@@ -4,6 +4,7 @@ const mongoose = require('mongoose')
 const jwt = require('jsonwebtoken')
 const Group = require('../models/Group')
 const User = require('../models/User')
+const Alumni = require('../models/Alumni') // Add Alumni import
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zoezi_secret'
 
@@ -21,21 +22,35 @@ function verifyToken(req, res, next) {
   }
 }
 
-// GET /student-curriculum?courseId=... - Get curriculum for student's group in a course
+// GET /student-curriculum?courseId=...&userType=... - Get curriculum for student/alumni's group in a course
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { courseId } = req.query
+    const { courseId, userType } = req.query // Get userType from query
     if (!courseId) return res.status(400).json({ status: 'error', message: 'courseId required' })
+    if (!userType) return res.status(400).json({ status: 'error', message: 'userType required' })
 
-    // Find student's record
-    const user = await User.findById(req.userId)
-    if (!user) return res.status(404).json({ status: 'error', message: 'Student not found' })
+    // Determine which model to use based on userType
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else {
+      return res.status(400).json({ 
+        status: 'error', 
+        message: 'Invalid user type. Must be "student" or "alumni"' 
+      });
+    }
+
+    // Find user's record (student or alumni)
+    const user = await model.findById(req.userId)
+    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
 
     // Find course enrollment
     const courseEnroll = user.courses.find(c => String(c.courseId) === String(courseId))
     if (!courseEnroll) return res.status(404).json({ status: 'error', message: 'Not enrolled in this course' })
 
-    // Find group student belongs to in this course
+    // Find group user belongs to in this course
     if (!courseEnroll.assignedGroup?.groupId) {
       return res.status(404).json({ status: 'error', message: 'Not assigned to a group yet' })
     }
@@ -61,16 +76,16 @@ router.get('/', verifyToken, async (req, res) => {
   }
 })
 
-// POST /student-curriculum/:groupId/items/:itemId/respond - Student submits response/question
+// POST /student-curriculum/:groupId/items/:itemId/respond - Student/Alumni submits response/question
 router.post('/:groupId/items/:itemId/respond', verifyToken, async (req, res) => {
   try {
     const { groupId, itemId } = req.params
-    const { responseText, attachments, isQuestion, isPublic } = req.body // Changed from attachmentUrl, attachmentType
+    const { responseText, attachments, isQuestion, isPublic, userType } = req.body // Get userType from body
 
     const group = await Group.findById(groupId)
     if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
 
-    // Verify student is in this group
+    // Verify student/alumni is in this group
     const studentInGroup = group.students.find(s => String(s.studentId) === String(req.userId))
     if (!studentInGroup) return res.status(403).json({ status: 'error', message: 'Not in this group' })
 
@@ -82,7 +97,22 @@ router.post('/:groupId/items/:itemId/respond', verifyToken, async (req, res) => 
       return res.status(403).json({ status: 'error', message: 'Item not yet released' })
     }
 
-    const student = await User.findById(req.userId).select('firstName lastName').lean()
+    // Determine which model to use based on userType
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else {
+      return res.status(400).json({ 
+        status: 'error', 
+        message: 'Invalid user type' 
+      });
+    }
+
+    const user = await model.findById(req.userId).select('firstName lastName').lean()
+    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
+    
     if (!item.responses) item.responses = []
 
     // Process attachments - filter out 'none' type or incomplete attachments
@@ -96,18 +126,55 @@ router.post('/:groupId/items/:itemId/respond', verifyToken, async (req, res) => 
 
     item.responses.push({
       studentId: req.userId,
-      studentName: `${student.firstName} ${student.lastName}`,
+      studentName: `${user.firstName} ${user.lastName}`,
       responseText: responseText || '',
-      attachments: validAttachments, // Changed from single attachment
+      attachments: validAttachments,
       isQuestion: isQuestion || false,
       isPublic: isPublic || false
     })
 
     await group.save()
-    return res.status(201).json({ status: 'success', data: { group } }) // Changed from { item } to { group }
+    return res.status(201).json({ status: 'success', data: { group } })
   } catch (err) {
     console.error('Submit response error:', err)
     return res.status(500).json({ status: 'error', message: 'Failed to submit response' })
+  }
+})
+
+// POST /student-curriculum/hide-payment-notification - Hide payment widget
+router.post('/hide-payment-notification', verifyToken, async (req, res) => {
+  try {
+    const { courseId, userType } = req.body // Get userType from body
+    if (!courseId) return res.status(400).json({ status: 'error', message: 'courseId required' })
+    if (!userType) return res.status(400).json({ status: 'error', message: 'userType required' })
+
+    // Determine which model to use based on userType
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else {
+      return res.status(400).json({ 
+        status: 'error', 
+        message: 'Invalid user type' 
+      });
+    }
+
+    const user = await model.findById(req.userId)
+    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
+    
+    const courseEnroll = user.courses.find(c => String(c.courseId) === String(courseId))
+    
+    if (!courseEnroll) return res.status(404).json({ status: 'error', message: 'Not enrolled in this course' })
+
+    courseEnroll.paymentNotificationHidden = true
+    await user.save()
+
+    return res.status(200).json({ status: 'success', message: 'Notification hidden' })
+  } catch (err) {
+    console.error('Hide notification error:', err)
+    return res.status(500).json({ status: 'error', message: 'Failed to hide notification' })
   }
 })
 
@@ -168,27 +235,6 @@ router.delete('/:groupId/items/:itemId/responses/:responseId', verifyToken, asyn
   } catch (err) {
     console.error('Delete response error:', err)
     return res.status(500).json({ status: 'error', message: 'Failed to delete response' })
-  }
-})
-
-// POST /student-curriculum/hide-payment-notification - Hide payment widget
-router.post('/hide-payment-notification', verifyToken, async (req, res) => {
-  try {
-    const { courseId } = req.body
-    if (!courseId) return res.status(400).json({ status: 'error', message: 'courseId required' })
-
-    const user = await User.findById(req.userId)
-    const courseEnroll = user.courses.find(c => String(c.courseId) === String(courseId))
-    
-    if (!courseEnroll) return res.status(404).json({ status: 'error', message: 'Not enrolled in this course' })
-
-    courseEnroll.paymentNotificationHidden = true
-    await user.save()
-
-    return res.status(200).json({ status: 'success', message: 'Notification hidden' })
-  } catch (err) {
-    console.error('Hide notification error:', err)
-    return res.status(500).json({ status: 'error', message: 'Failed to hide notification' })
   }
 })
 

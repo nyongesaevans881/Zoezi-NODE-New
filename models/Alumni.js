@@ -89,6 +89,55 @@ const alumniSchema = new mongoose.Schema({
       updatedAt: { type: Date, default: Date.now }
     }
   ],
+
+  // Add courses array (same structure as User model)
+  courses: [
+    {
+      courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },
+      name: { type: String },
+      duration: { type: Number },
+      durationType: { type: String },
+      payment: {
+        status: { type: String, enum: ['PENDING', 'PAID', 'FAILED'], default: 'PENDING' },
+        phone: { type: String },
+        transactionId: { type: String },
+        amount: { type: Number },
+        timeOfPayment: { type: Date }
+      },
+      assignmentStatus: { type: String, enum: ['PENDING', 'ASSIGNED', 'CANCELLED'], default: 'PENDING' },
+      enrolledAt: { type: Date, default: Date.now },
+      adminNotes: { type: String, default: '' },
+      isAssignedToGroup: { type: Boolean, default: false },
+      assignedGroup: {
+        groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
+        groupName: { type: String, default: null }
+      },
+      tutor: {
+        id: { type: mongoose.Schema.Types.ObjectId, ref: 'Tutor', default: null },
+        name: { type: String, default: null },
+        email: { type: String, default: null },
+        phone: { type: String, default: null },
+        status: { type: String, enum: ['PENDING', 'ASSIGNED', 'CANCELLED'], default: 'PENDING' }
+      },
+      paymentNotificationHidden: { type: Boolean, default: false },
+      // Certification fields
+      exams: [
+        {
+          examName: { type: String, required: true },
+          grade: {
+            type: String,
+            enum: ['Distinction', 'Merit', 'Credit', 'Pass', 'Fail'],
+            required: true
+          },
+          recordedAt: { type: Date, default: Date.now }
+        }
+      ],
+      gpa: { type: Number, default: 0 },
+      finalGrade: { type: String, default: '' },
+      certificationDate: { type: Date, default: null },
+      certificationStatus: { type: String, enum: ['PENDING', 'CERTIFIED', 'GRADUATED'], default: 'PENDING' }
+    }
+  ],
   
   // CPD (Continuing Professional Development) Records
   cpdRecords: [
