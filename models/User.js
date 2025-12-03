@@ -20,6 +20,70 @@ const userSchema = new mongoose.Schema({
   userType: { type: String, default: 'student' },
   password: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
+
+  subscription: {
+    // Current active subscription
+    active: {
+      type: Boolean,
+      default: false
+    },
+    expiryDate: {
+      type: Date,
+      default: null
+    },
+    yearsSubscribed: {
+      type: Number,
+      default: 0
+    },
+    lastPaymentDate: {
+      type: Date,
+      default: null
+    },
+    autoRenew: {
+      type: Boolean,
+      default: false
+    }
+  },
+
+  // Subscription payment history
+  subscriptionPayments: [
+    {
+      years: {
+        type: Number,
+        required: true,
+        min: 1
+      },
+      amount: {
+        type: Number,
+        required: true
+      },
+      paymentDate: {
+        type: Date,
+        default: Date.now
+      },
+      expiryDate: {
+        type: Date,
+        required: true
+      },
+      paymentMethod: {
+        type: String,
+        enum: ['mpesa', 'cash', 'bank_transfer', 'cheque', 'paypal'],
+        default: 'mpesa'
+      },
+      transactionId: String,
+      phone: String,
+      status: {
+        type: String,
+        enum: ['pending', 'paid', 'failed', 'cancelled'],
+        default: 'pending'
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now
+      }
+    }
+  ],
+
   courses: [
     {
       courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },
@@ -60,7 +124,7 @@ const userSchema = new mongoose.Schema({
   currentLocation: { type: String, trim: true }, // Current practice location
   admissionNumber: { type: String, unique: true },
   isPublicProfileEnabled: { type: Boolean, default: true }, // Allow viewing public profile
-    // Profile Picture
+  // Profile Picture
   profilePicture: {
     url: {
       type: String,
@@ -71,7 +135,19 @@ const userSchema = new mongoose.Schema({
       default: null
     }
   },
-   // Emergency Contact
+
+  cpdRecords: [
+    {
+      year: { type: Number, required: true }, // Year of CPD exam (e.g., 2025)
+      dateTaken: { type: Date, required: true }, // Date exam was taken
+      result: { type: String, enum: ['pass', 'fail'], required: true }, // Pass or Fail
+      score: { type: Number }, // Score obtained (optional)
+      remarks: { type: String, trim: true }, // Additional remarks/notes
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }
+  ],
+  // Emergency Contact
   nextOfKinName: { type: String, trim: true },
   nextOfKinRelationship: { type: String, trim: true },
   nextOfKinPhone: { type: String, trim: true },

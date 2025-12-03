@@ -274,8 +274,6 @@ router.post('/user-data', async (req, res) => {
       });
     }
 
-    console.log(`user`, user);
-
     return res.status(200).json({ 
       status: 'success', 
       data: { user } 

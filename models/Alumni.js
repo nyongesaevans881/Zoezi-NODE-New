@@ -11,11 +11,11 @@ const alumniSchema = new mongoose.Schema({
   dateOfBirth: { type: Date },
   gender: { type: String },
   userType: { type: String, default: 'alumni' },
-  
+
   // Admission Info
   admissionNumber: { type: String, unique: true, sparse: true },
   applicationRef: { type: String },
-  
+
   // Education Info
   qualification: { type: String, trim: true },
   course: { type: String, trim: true },
@@ -23,27 +23,27 @@ const alumniSchema = new mongoose.Schema({
   preferredIntake: { type: String, trim: true },
   preferredStartDate: { type: String, trim: true },
   startDate: { type: Date },
-  
+
   // Personal Details
   citizenship: { type: String, trim: true },
   idNumber: { type: String, trim: true },
   kcseGrade: { type: String, trim: true },
-  
+
   // Application History
   howHeardAbout: { type: [String], default: [] },
   otherSource: { type: String, trim: true },
-  
+
   // Finance
   courseFee: { type: Number },
   upfrontFee: { type: Number },
   feePayer: { type: String, trim: true },
   feePayerPhone: { type: String, trim: true },
-  
+
   // Emergency Contact
   nextOfKinName: { type: String, trim: true },
   nextOfKinRelationship: { type: String, trim: true },
   nextOfKinPhone: { type: String, trim: true },
-  
+
   // Course Specific Info
   courseDuration: { type: String, trim: true },
   exams: [
@@ -52,15 +52,23 @@ const alumniSchema = new mongoose.Schema({
       score: { type: String, default: null }, // Final exam grade
     }
   ],
-  
+
   // Media & Status
-  profilePicture: { type: String },
-  profilePicPublicId: { type: String }, // Cloudinary public ID for deletion
+  profilePicture: {
+    url: {
+      type: String,
+      default: null
+    },
+    cloudinaryId: {
+      type: String,
+      default: null
+    }
+  },
   status: { type: String, default: 'alumni' },
-  
+
   // Graduation Info
   graduationDate: { type: Date, default: Date.now },
-  
+
   // Public Profile Fields
   verified: { type: Boolean, default: true }, // Mark as certified professional
   practiceStatus: { type: String, enum: ['active', 'inactive', 'on_leave', 'retired'], default: 'active' }, // Practicing status
@@ -68,25 +76,72 @@ const alumniSchema = new mongoose.Schema({
   currentLocation: { type: String, trim: true }, // Current practice location
   isPublicProfileEnabled: { type: Boolean, default: true }, // Allow viewing public profile
   bio: { type: String, trim: true }, // Professional bio/description
-  
+
   // Password Reset Fields
   resetCode: { type: String, default: null }, // 4-digit reset code
   resetCodeExpiry: { type: Date, default: null }, // When reset code expires
   resetAttempts: { type: Number, default: 0 }, // Track failed reset attempts
-  
-  // Annual Subscription Fields
+
+  subscription: {
+    // Current active subscription
+    active: {
+      type: Boolean,
+      default: false
+    },
+    expiryDate: {
+      type: Date,
+      default: null
+    },
+    yearsSubscribed: {
+      type: Number,
+      default: 0
+    },
+    lastPaymentDate: {
+      type: Date,
+      default: null
+    },
+    autoRenew: {
+      type: Boolean,
+      default: false
+    }
+  },
+
+  // Subscription payment history
   subscriptionPayments: [
     {
-      year: { type: Number, required: true }, // Year of payment (e.g., 2025)
-      status: { type: String, enum: ['paid', 'pending', 'expired'], default: 'pending' }, // Payment status
-      amount: { type: Number, required: true }, // Amount paid
-      paymentMethod: { type: String, enum: ['mpesa', 'cash', 'bank_transfer', 'cheque', 'paypal'], default: 'mpesa' }, // Payment method
-      transactionId: { type: String }, // M-Pesa receipt number or reference
-      paymentDate: { type: Date }, // When payment was made
-      expiryDate: { type: Date }, // When subscription expires
-      profileActive: { type: Boolean, default: false }, // Whether profile is active for this year
-      createdAt: { type: Date, default: Date.now },
-      updatedAt: { type: Date, default: Date.now }
+      years: {
+        type: Number,
+        required: true,
+        min: 1
+      },
+      amount: {
+        type: Number,
+        required: true
+      },
+      paymentDate: {
+        type: Date,
+        default: Date.now
+      },
+      expiryDate: {
+        type: Date,
+        required: true
+      },
+      paymentMethod: {
+        type: String,
+        enum: ['mpesa', 'cash', 'bank_transfer', 'cheque', 'paypal'],
+        default: 'mpesa'
+      },
+      transactionId: String,
+      phone: String,
+      status: {
+        type: String,
+        enum: ['pending', 'paid', 'failed', 'cancelled'],
+        default: 'pending'
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now
+      }
     }
   ],
 
@@ -138,7 +193,7 @@ const alumniSchema = new mongoose.Schema({
       certificationStatus: { type: String, enum: ['PENDING', 'CERTIFIED', 'GRADUATED'], default: 'PENDING' }
     }
   ],
-  
+
   // CPD (Continuing Professional Development) Records
   cpdRecords: [
     {
@@ -151,7 +206,7 @@ const alumniSchema = new mongoose.Schema({
       updatedAt: { type: Date, default: Date.now }
     }
   ],
-  
+
   // Timestamps
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

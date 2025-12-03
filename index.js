@@ -47,6 +47,8 @@ app.use('/student-curriculum', require('./routes/studentCurriculumRoutes'));
 app.use('/certification', require('./routes/certificationRoutes'));
 app.use('/admin', require('./routes/adminRoutes'));
 app.use('/finance', require('./routes/financeRoutes'));
+app.use('/subscription', require('./routes/subscriptionRoutes'));
+app.use('/cpd', require('./routes/cpdRoutes'));
 
 // Basic health check route
 app.get('/api/health', (req, res) => {
