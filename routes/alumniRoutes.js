@@ -958,4 +958,44 @@ router.get('/admin/search-alumni', async (req, res) => {
   }
 });
 
+// DELETE /alumni/:id - Delete alumni by ID
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find and delete the alumni
+    const deletedAlumnus = await Alumni.findByIdAndDelete(id);
+
+    if (!deletedAlumnus) {
+      return res.status(404).json({ 
+        status: 'error', 
+        message: 'Alumni not found' 
+      });
+    }
+
+    // If alumni had a profile picture, delete it from Cloudinary
+    if (deletedAlumnus.profilePicPublicId) {
+      try {
+        await cloudinary.uploader.destroy(deletedAlumnus.profilePicPublicId);
+      } catch (cloudinaryError) {
+        console.error('Error deleting profile image from Cloudinary:', cloudinaryError);
+        // Continue with deletion even if Cloudinary delete fails
+      }
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Alumni deleted successfully',
+      data: { _id: id }
+    });
+  } catch (err) {
+    console.error('Delete alumni error:', err);
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to delete alumni', 
+      error: err.message 
+    });
+  }
+});
+
 module.exports = router;
