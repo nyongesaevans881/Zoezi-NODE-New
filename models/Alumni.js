@@ -204,5 +204,18 @@ const alumniSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+
+// Add indexes for faster search queries
+alumniSchema.index({ firstName: 1, isPublicProfileEnabled: 1 });
+alumniSchema.index({ lastName: 1, isPublicProfileEnabled: 1 });
+alumniSchema.index({ email: 1, isPublicProfileEnabled: 1 });
+alumniSchema.index({ admissionNumber: 1, isPublicProfileEnabled: 1 });
+alumniSchema.index({ phone: 1, isPublicProfileEnabled: 1 });
+
+// Additional useful indexes
+alumniSchema.index({ status: 1, isPublicProfileEnabled: 1 });
+alumniSchema.index({ verified: 1, isPublicProfileEnabled: 1 });
+alumniSchema.index({ createdAt: -1 }); // For sorting by recent
+
 const Alumni = mongoose.model('Alumni', alumniSchema);
 module.exports = Alumni;

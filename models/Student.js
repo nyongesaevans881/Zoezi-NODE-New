@@ -71,5 +71,20 @@ const studentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+
+// Add indexes for faster search queries
+studentSchema.index({ firstName: 1, isPublicProfileEnabled: 1 });
+studentSchema.index({ lastName: 1, isPublicProfileEnabled: 1 });
+studentSchema.index({ email: 1, isPublicProfileEnabled: 1 });
+studentSchema.index({ admissionNumber: 1, isPublicProfileEnabled: 1 });
+studentSchema.index({ phone: 1, isPublicProfileEnabled: 1 });
+
+// Additional useful indexes
+studentSchema.index({ status: 1, isPublicProfileEnabled: 1 });
+studentSchema.index({ verified: 1, isPublicProfileEnabled: 1 });
+studentSchema.index({ createdAt: -1 }); // For sorting by recent
+
+
+
 const Student = mongoose.model('Student', studentSchema);
 module.exports = Student;

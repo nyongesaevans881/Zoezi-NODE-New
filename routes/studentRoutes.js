@@ -218,7 +218,6 @@ router.post('/:studentId/graduate', async (req, res) => {
   }
 });
 
-// PUT /students/:studentId/update - Update student information by section or upload profile picture
 // PUT /students/:studentId/update - Update student information by section
 router.put('/:studentId/update', upload.single('file'), async (req, res) => {
   try {
@@ -432,33 +431,35 @@ router.get('/dashboard/stats', async (req, res) => {
 // GET /students/public/all - Get all public profiles (students + alumni)
 router.get('/public/all', async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
-    
     // Fetch all students with public profile enabled
-    const students = await Student.find({ isPublicProfileEnabled: true })
+    const students = await Student.find({ 
+      isPublicProfileEnabled: true 
+    })
       .select('-password')
+      .sort({ firstName: 1 })
       .lean();
 
-    // Fetch all alumni with public profile enabled AND paid subscription for current year
+    // Fetch all alumni with public profile enabled
     const Alumni = require('../models/Alumni');
     const alumni = await Alumni.find({ 
       isPublicProfileEnabled: true,
-      // 'subscriptionPayments': {
-      //   $elemMatch: {
-      //     year: currentYear,
-      //     status: 'paid'
-      //   }
-      // }
+      // Uncomment if you want subscription check
+      // 'subscription.active': true,
+      // 'subscription.expiryDate': { $gte: new Date() }
     })
       .select('-password')
+      .sort({ firstName: 1 })
       .lean();
 
-    // Combine and sort: verified (certified professionals) first, then students
+    // Combine profiles
     const allProfiles = [...students, ...alumni]
       .sort((a, b) => {
-        // Verified/certified professionals first
-        if (a.verified && !b.verified) return -1;
-        if (!a.verified && b.verified) return 1;
+        // Alumni first, then students
+        if (a.status === 'alumni' && b.status !== 'alumni') return -1;
+        if (a.status !== 'alumni' && b.status === 'alumni') return 1;
+        // Then sort by firstName alphabetically
+        if (a.firstName < b.firstName) return -1;
+        if (a.firstName > b.firstName) return 1;
         return 0;
       });
 
@@ -471,65 +472,166 @@ router.get('/public/all', async (req, res) => {
     });
   } catch (err) {
     console.error('Public profiles error:', err);
-    res.status(500).json({ status: 'error', message: 'Failed to fetch public profiles', error: err.message });
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch public profiles', 
+      error: err.message 
+    });
   }
 });
 
-// GET /students/public/search - Search public profiles
+// GET /students/public/search - Enhanced search with fuzzy matching
 router.get('/public/search', async (req, res) => {
   try {
     const { q } = req.query;
-    const currentYear = new Date().getFullYear();
+    
+    // If no query, return all public profiles
+    if (!q || q.trim() === '') {
+      // Fetch all students with public profile enabled
+      const students = await Student.find({ 
+        isPublicProfileEnabled: true 
+      })
+        .select('-password')
+        .sort({ firstName: 1 })
+        .lean();
 
-    if (!q || q.trim().length < 2) {
-      return res.status(400).json({ status: 'error', message: 'Search query too short' });
+      // Fetch all alumni with public profile enabled
+      const Alumni = require('../models/Alumni');
+      const alumni = await Alumni.find({ 
+        isPublicProfileEnabled: true
+      })
+        .select('-password')
+        .sort({ firstName: 1 })
+        .lean();
+
+      const allProfiles = [...students, ...alumni]
+        .sort((a, b) => {
+          if (a.status === 'alumni' && b.status !== 'alumni') return -1;
+          if (a.status !== 'alumni' && b.status === 'alumni') return 1;
+          if (a.firstName < b.firstName) return -1;
+          if (a.firstName > b.firstName) return 1;
+          return 0;
+        });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          results: allProfiles,
+          count: allProfiles.length
+        }
+      });
     }
 
-    const searchRegex = new RegExp(q, 'i');
+    // Process search query
+    const processedQuery = preprocessSearchQuery(q);
+    
+    // Create search conditions
+    const searchConditions = [];
     const Alumni = require('../models/Alumni');
 
-    // Search students
-    const students = await Student.find({
-      isPublicProfileEnabled: true,
-      $or: [
-        { firstName: searchRegex },
-        { lastName: searchRegex },
-        { admissionNumber: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex }
-      ]
-    })
-      .select('-password')
-      .lean();
+    // 1. Exact matches (highest priority)
+    searchConditions.push(
+      {
+        $or: [
+          { firstName: { $regex: `^${processedQuery.exact}$`, $options: 'i' } },
+          { lastName: { $regex: `^${processedQuery.exact}$`, $options: 'i' } },
+          { email: { $regex: `^${processedQuery.exact}$`, $options: 'i' } },
+          { phone: { $regex: `^${processedQuery.cleanPhone}$`, $options: 'i' } },
+          { admissionNumber: { $regex: `^${processedQuery.exact}$`, $options: 'i' } }
+        ]
+      }
+    );
 
-    // Search alumni with paid subscription for current year
-    const alumni = await Alumni.find({
-      isPublicProfileEnabled: true,
-      'subscriptionPayments': {
-        $elemMatch: {
-          year: currentYear,
-          status: 'paid'
+    // 2. Partial word matches (second priority)
+    if (processedQuery.words.length > 0) {
+      const wordConditions = [];
+      
+      // For each word, search across all fields
+      processedQuery.words.forEach(word => {
+        if (word.length >= 2) { // Only search for words with 2+ characters
+          const wordRegex = new RegExp(word, 'i');
+          wordConditions.push({
+            $or: [
+              { firstName: wordRegex },
+              { lastName: wordRegex },
+              { admissionNumber: wordRegex },
+              { email: wordRegex },
+              { phone: { $regex: `.*${word}.*`, $options: 'i' } }
+            ]
+          });
         }
-      },
+      });
+
+      if (wordConditions.length > 0) {
+        searchConditions.push({ $and: wordConditions });
+      }
+    }
+
+    // 3. Combined name search (if query contains space)
+    if (processedQuery.words.length >= 2) {
+      const firstName = processedQuery.words[0];
+      const lastName = processedQuery.words.slice(1).join(' ');
+      
+      searchConditions.push({
+        $and: [
+          { firstName: { $regex: firstName, $options: 'i' } },
+          { lastName: { $regex: lastName, $options: 'i' } }
+        ]
+      });
+
+      // Also try reverse (last name first)
+      searchConditions.push({
+        $and: [
+          { firstName: { $regex: processedQuery.words.slice(-1)[0], $options: 'i' } },
+          { lastName: { $regex: processedQuery.words.slice(0, -1).join(' '), $options: 'i' } }
+        ]
+      });
+    }
+
+    // 4. Fuzzy/partial matches (lowest priority)
+    searchConditions.push({
       $or: [
-        { firstName: searchRegex },
-        { lastName: searchRegex },
-        { admissionNumber: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex }
+        { firstName: { $regex: `.*${processedQuery.exact}.*`, $options: 'i' } },
+        { lastName: { $regex: `.*${processedQuery.exact}.*`, $options: 'i' } },
+        { email: { $regex: `.*${processedQuery.exact}.*`, $options: 'i' } },
+        { admissionNumber: { $regex: `.*${processedQuery.exact}.*`, $options: 'i' } }
       ]
-    })
+    });
+
+    // Search students
+    const studentQuery = {
+      isPublicProfileEnabled: true,
+      $or: searchConditions
+    };
+
+    const students = await Student.find(studentQuery)
       .select('-password')
       .lean();
 
-    // Combine and sort: verified (certified professionals) first, then students
-    const results = [...students, ...alumni]
-      .sort((a, b) => {
-        // Verified/certified professionals first
-        if (a.verified && !b.verified) return -1;
-        if (!a.verified && b.verified) return 1;
-        return 0;
-      });
+    // Search alumni
+    const alumniQuery = {
+      isPublicProfileEnabled: true,
+      $or: searchConditions
+    };
+
+    const alumni = await Alumni.find(alumniQuery)
+      .select('-password')
+      .lean();
+
+    // Combine results
+    let allResults = [...students, ...alumni];
+
+    // Score and sort results
+    const scoredResults = allResults.map(profile => ({
+      profile,
+      score: calculateRelevanceScore(profile, processedQuery)
+    }));
+
+    // Sort by score (highest first)
+    scoredResults.sort((a, b) => b.score - a.score);
+
+    // Extract profiles
+    const results = scoredResults.map(item => item.profile);
 
     res.status(200).json({
       status: 'success',
@@ -540,7 +642,154 @@ router.get('/public/search', async (req, res) => {
     });
   } catch (err) {
     console.error('Public search error:', err);
-    res.status(500).json({ status: 'error', message: 'Search failed', error: err.message });
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Search failed', 
+      error: err.message 
+    });
+  }
+});
+
+// Helper function to preprocess search query
+function preprocessSearchQuery(query) {
+  if (!query) return { exact: '', words: [], cleanPhone: '' };
+  
+  // Convert to string and trim
+  const strQuery = String(query).trim();
+  
+  // Remove special characters except spaces and dots
+  const cleanQuery = strQuery
+    .replace(/[^\w\s@.-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // Extract words
+  const words = cleanQuery.split(/\s+/).filter(word => word.length > 0);
+  
+  // Clean phone number (remove all non-numeric)
+  const cleanPhone = strQuery.replace(/\D/g, '');
+  
+  return {
+    exact: cleanQuery,
+    words: words,
+    original: strQuery,
+    cleanPhone: cleanPhone
+  };
+}
+
+// Helper function to calculate relevance score
+function calculateRelevanceScore(profile, query) {
+  let score = 0;
+  const fullName = `${profile.firstName} ${profile.lastName}`.toLowerCase();
+  const queryLower = query.original.toLowerCase();
+  
+  // Exact matches get highest scores
+  if (profile.firstName.toLowerCase() === query.exact.toLowerCase()) score += 100;
+  if (profile.lastName.toLowerCase() === query.exact.toLowerCase()) score += 100;
+  if (fullName === query.original.toLowerCase()) score += 150;
+  if (profile.email.toLowerCase() === query.exact.toLowerCase()) score += 120;
+  if (profile.admissionNumber === query.exact) score += 110;
+  
+  // Phone number exact match (with cleaned numbers)
+  const profilePhoneClean = (profile.phone || '').replace(/\D/g, '');
+  if (profilePhoneClean === query.cleanPhone && query.cleanPhone.length >= 7) {
+    score += 130;
+  }
+  
+  // Starts with matches
+  if (profile.firstName.toLowerCase().startsWith(query.words[0]?.toLowerCase() || '')) score += 40;
+  if (profile.lastName.toLowerCase().startsWith(query.words[0]?.toLowerCase() || '')) score += 40;
+  
+  // Contains matches
+  if (fullName.includes(queryLower)) score += 60;
+  if (profile.firstName.toLowerCase().includes(queryLower)) score += 50;
+  if (profile.lastName.toLowerCase().includes(queryLower)) score += 50;
+  if ((profile.email || '').toLowerCase().includes(queryLower)) score += 45;
+  if ((profile.admissionNumber || '').toLowerCase().includes(queryLower)) score += 55;
+  
+  // Word-by-word matching
+  query.words.forEach(word => {
+    if (profile.firstName.toLowerCase().includes(word.toLowerCase())) score += 20;
+    if (profile.lastName.toLowerCase().includes(word.toLowerCase())) score += 20;
+  });
+  
+  // Boost for verified/alumni profiles
+  if (profile.verified) score += 10;
+  if (profile.status === 'alumni') score += 15;
+  
+  return score;
+}
+
+// Additional endpoint for autocomplete suggestions
+router.get('/public/autocomplete', async (req, res) => {
+  try {
+    const { q, limit = 10 } = req.query;
+    
+    if (!q || q.trim().length < 2) {
+      return res.status(200).json({
+        status: 'success',
+        data: { suggestions: [] }
+      });
+    }
+    
+    const processedQuery = preprocessSearchQuery(q);
+    const Alumni = require('../models/Alumni');
+    
+    // Search across multiple fields for suggestions
+    const studentSuggestions = await Student.find({
+      isPublicProfileEnabled: true,
+      $or: [
+        { firstName: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } },
+        { lastName: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } },
+        { email: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } },
+        { admissionNumber: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } }
+      ]
+    })
+      .select('firstName lastName email admissionNumber status')
+      .limit(parseInt(limit))
+      .lean();
+    
+    const alumniSuggestions = await Alumni.find({
+      isPublicProfileEnabled: true,
+      $or: [
+        { firstName: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } },
+        { lastName: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } },
+        { email: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } },
+        { admissionNumber: { $regex: `^${processedQuery.exact}.*`, $options: 'i' } }
+      ]
+    })
+      .select('firstName lastName email admissionNumber status')
+      .limit(parseInt(limit))
+      .lean();
+    
+    const allSuggestions = [...studentSuggestions, ...alumniSuggestions];
+    
+    // Format suggestions
+    const suggestions = allSuggestions.map(profile => ({
+      name: `${profile.firstName} ${profile.lastName}`,
+      email: profile.email,
+      admissionNumber: profile.admissionNumber,
+      type: profile.status === 'alumni' ? 'Alumni' : 'Student',
+      display: `${profile.firstName} ${profile.lastName} (${profile.admissionNumber || profile.email})`
+    }));
+    
+    // Remove duplicates based on email
+    const uniqueSuggestions = suggestions.filter((suggestion, index, self) =>
+      index === self.findIndex(s => s.email === suggestion.email)
+    );
+    
+    res.status(200).json({
+      status: 'success',
+      data: { suggestions: uniqueSuggestions.slice(0, parseInt(limit)) }
+    });
+    
+  } catch (err) {
+    console.error('Autocomplete error:', err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Autocomplete failed',
+      error: err.message
+    });
   }
 });
 
