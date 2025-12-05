@@ -54,9 +54,18 @@ const alumniSchema = new mongoose.Schema({
   ],
 
   // Media & Status
-  profilePicture: { type: String }, // URL
-  profilePicPublicId: { type: String }, // Cloudinary public ID for deletion
+  profilePicture: {
+    url: {
+      type: String,
+      default: null
+    },
+    cloudinaryId: {
+      type: String,
+      default: null
+    }
+  }, // Cloudinary public ID for deletion
   status: { type: String, default: 'alumni' },
+
 
   // Graduation Info
   graduationDate: { type: Date, default: Date.now },

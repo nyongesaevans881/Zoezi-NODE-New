@@ -29,45 +29,6 @@ router.get('/', verifyToken, async (req, res) => {
     if (!courseId) return res.status(400).json({ status: 'error', message: 'courseId required' })
     if (!userType) return res.status(400).json({ status: 'error', message: 'userType required' })
 
-    // SPECIAL CASE: If courseId is "69327f9018e6e370bd203c5c", directly search groups collection
-    if (courseId === "69327f9018e6e370bd203c5c") {
-      console.log("📦 SPECIAL COURSE DETECTED: Bypassing checks and fetching directly from Groups");
-      
-      // Find group for this course ID
-      const group = await Group.findOne({ courseId: courseId });
-      if (!group) {
-        return res.status(404).json({ 
-          status: 'error', 
-          message: 'No group found for this course in the database' 
-        });
-      }
-      
-      // Get tutor info if exists
-      let tutor = null;
-      if (group.tutorId) {
-        const Tutor = require('../models/Tutor');
-        tutor = await Tutor.findById(group.tutorId).select('firstName lastName email phone').lean();
-      }
-      
-      // Mock course enrollment data for response structure
-      const mockCourseEnroll = {
-        courseId: courseId,
-        name: group.courseName || "Presentation Course",
-        status: "ASSIGNED",
-        enrollmentDate: new Date()
-      };
-      
-      return res.status(200).json({
-        status: 'success',
-        data: {
-          group,
-          tutor,
-          courseEnroll: mockCourseEnroll
-        }
-      });
-    }
-
-    // NORMAL FLOW for other course IDs
     // Determine which model to use based on userType
     let model;
     if (userType === 'student') {
