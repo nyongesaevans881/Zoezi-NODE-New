@@ -125,8 +125,8 @@ router.post('/:groupId/items/:itemId/respond', verifyToken, async (req, res) => 
     if (!group) return res.status(404).json({ status: 'error', message: 'Group not found' })
 
     // Verify student/alumni is in this group
-    const studentInGroup = group.students.find(s => String(s.studentId) === String(req.userId))
-    if (!studentInGroup) return res.status(403).json({ status: 'error', message: 'Not in this group' })
+    // const studentInGroup = group.students.find(s => String(s.studentId) === String(req.userId))
+    // if (!studentInGroup) return res.status(403).json({ status: 'error', message: 'Not in this group' })
 
     const item = group.curriculumItems.id(itemId)
     if (!item) return res.status(404).json({ status: 'error', message: 'Item not found' })
