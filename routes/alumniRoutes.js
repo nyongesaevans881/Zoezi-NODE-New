@@ -125,7 +125,7 @@ router.get('/list', async (req, res) => {
   }
 });
 
-// PUT /alumni/:alumniId/update - Update alumni information by section or upload profile picture
+// PUT /alumni/:alumniId/update - Update alumni information by section
 router.put('/:alumniId/update', upload.single('file'), async (req, res) => {
   try {
     const { alumniId } = req.params;
@@ -167,7 +167,7 @@ router.put('/:alumniId/update', upload.single('file'), async (req, res) => {
       });
     }
 
-    // Handle other sections (personal, contact, academic, financial, exams)
+    // Handle other sections (info, personal, academic, financial, exams, cpd)
     if (!section || !data) {
       return res.status(400).json({ status: 'error', message: 'Section and data are required' });
     }
@@ -175,16 +175,17 @@ router.put('/:alumniId/update', upload.single('file'), async (req, res) => {
     let updateData = {};
 
     switch (section) {
+      case 'info':
+        updateData = {
+          admissionNumber: data.admissionNumber
+        };
+        break;
       case 'personal':
         updateData = {
           firstName: data.firstName,
           lastName: data.lastName,
           dateOfBirth: data.dateOfBirth,
-          gender: data.gender
-        };
-        break;
-      case 'contact':
-        updateData = {
+          gender: data.gender,
           email: data.email,
           phone: data.phone
         };
