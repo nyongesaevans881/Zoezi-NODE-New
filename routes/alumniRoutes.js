@@ -81,11 +81,12 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /alumni/list - list alumni with pagination and search
+// GET /alumni/list - list alumni with pagination, search, and alphabetical sorting by first name
 router.get('/list', async (req, res) => {
   try {
     const { limit = 50, skip = 0, search } = req.query;
     const q = {};
+    
     if (search) {
       const re = new RegExp(search, 'i');
       q.$or = [
@@ -98,10 +99,12 @@ router.get('/list', async (req, res) => {
     }
 
     const total = await Alumni.countDocuments(q);
+    
+    // Sort by firstName A-Z (ascending order)
     const alumni = await Alumni.find(q)
       .limit(parseInt(limit))
       .skip(parseInt(skip))
-      .sort({ graduationDate: -1 })
+      .sort({ firstName: 1 }) // 1 = ascending (A-Z), -1 = descending (Z-A)
       .select('-password');
 
     res.status(200).json({
