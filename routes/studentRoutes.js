@@ -436,12 +436,12 @@ router.get('/public/all', async (req, res) => {
     const Alumni = require('../models/Alumni');
     const alumni = await Alumni.find({ 
       isPublicProfileEnabled: true,
-      'subscriptionPayments': {
-        $elemMatch: {
-          year: currentYear,
-          status: 'paid'
-        }
-      }
+      // 'subscriptionPayments': {
+      //   $elemMatch: {
+      //     year: currentYear,
+      //     status: 'paid'
+      //   }
+      // }
     })
       .select('-password')
       .lean();
