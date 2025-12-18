@@ -1022,6 +1022,7 @@ router.post('/register', async (req, res) => {
       citizenship,
       idNumber,
       kcseGrade,
+      admnNumber,
       howHeardAbout,
       otherSource,
       feePayer,
@@ -1061,7 +1062,7 @@ router.post('/register', async (req, res) => {
       userType: 'alumni',
       
       // Admission Info - leave blank/null
-      admissionNumber: null,
+      admissionNumber: admnNumber,
       applicationRef: '',
       
       // Education Info
