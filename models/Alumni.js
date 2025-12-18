@@ -18,21 +18,24 @@ const alumniSchema = new mongoose.Schema({
 
   // Education Info
   qualification: { type: String, trim: true },
+  kcseGrade: { type: String, trim: true },
+
+  // course details 
   course: { type: String, trim: true },
   trainingMode: { type: String, trim: true },
   preferredIntake: { type: String, trim: true },
   preferredStartDate: { type: String, trim: true },
   startDate: { type: Date },
+  courseDuration: { type: String, trim: true },
 
   // Personal Details
   citizenship: { type: String, trim: true },
   idNumber: { type: String, trim: true },
-  kcseGrade: { type: String, trim: true },
 
   // Application History
   howHeardAbout: { type: [String], default: [] },
   otherSource: { type: String, trim: true },
-
+  
   // Finance
   courseFee: { type: Number },
   upfrontFee: { type: Number },
@@ -45,7 +48,6 @@ const alumniSchema = new mongoose.Schema({
   nextOfKinPhone: { type: String, trim: true },
 
   // Course Specific Info
-  courseDuration: { type: String, trim: true },
   exams: [
     {
       name: { type: String, trim: true },
@@ -66,12 +68,12 @@ const alumniSchema = new mongoose.Schema({
   }, // Cloudinary public ID for deletion
   status: { type: String, default: 'alumni' },
 
-
   // Graduation Info
   graduationDate: { type: Date, default: Date.now },
 
   // Public Profile Fields
   verified: { type: Boolean, default: true }, // Mark as certified professional
+  adminVerified: { type: Boolean, default: true },
   practiceStatus: { type: String, enum: ['active', 'inactive', 'on_leave', 'retired'], default: 'active' }, // Practicing status
   practicingSince: { type: Date }, // When they started practicing
   currentLocation: { type: String, trim: true }, // Current practice location

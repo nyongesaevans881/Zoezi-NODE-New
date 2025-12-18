@@ -1002,4 +1002,159 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Alumni Registration Route
+router.post('/register', async (req, res) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      password,
+      dateOfBirth,
+      gender,
+      qualification,
+      course,
+      trainingMode,
+      preferredIntake,
+      preferredStartDate,
+      startDate,
+      citizenship,
+      idNumber,
+      kcseGrade,
+      howHeardAbout,
+      otherSource,
+      feePayer,
+      feePayerPhone,
+      nextOfKinName,
+      nextOfKinRelationship,
+      nextOfKinPhone,
+      graduationDate,
+      currentLocation,
+      bio,
+      practiceStatus
+    } = req.body;
+
+    // Check if alumni already exists
+    const existingAlumni = await Alumni.findOne({ email });
+    if (existingAlumni) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'An alumni with this email already exists'
+      });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create new alumni
+    const newAlumni = new Alumni({
+      // Basic Info
+      firstName,
+      lastName,
+      email,
+      phone,
+      password: hashedPassword,
+      dateOfBirth,
+      gender,
+      userType: 'alumni',
+      
+      // Admission Info - leave blank/null
+      admissionNumber: null,
+      applicationRef: '',
+      
+      // Education Info
+      qualification,
+      course,
+      trainingMode,
+      preferredIntake,
+      preferredStartDate,
+      startDate,
+      
+      // Personal Details
+      citizenship,
+      idNumber,
+      kcseGrade,
+      
+      // Application History
+      howHeardAbout: Array.isArray(howHeardAbout) ? howHeardAbout : [],
+      otherSource,
+      
+      // Finance - set defaults
+      courseFee: 75000,
+      upfrontFee: 75000,
+      feePayer,
+      feePayerPhone,
+      
+      // Emergency Contact
+      nextOfKinName,
+      nextOfKinRelationship,
+      nextOfKinPhone,
+      
+      // Course Specific Info
+      courseDuration: "6 months",
+      exams: [], // Leave blank
+      
+      // Media & Status
+      profilePicture: {
+        url: null,
+        cloudinaryId: null
+      },
+      status: 'alumni',
+      
+      // Graduation Info
+      graduationDate: graduationDate || new Date(),
+      
+      // Public Profile Fields
+      verified: true,
+      adminVerified: false,
+      practiceStatus: practiceStatus || 'active',
+      practicingSince: graduationDate || new Date(),
+      currentLocation: currentLocation || '',
+      isPublicProfileEnabled: true,
+      bio: bio || '',
+      
+      // Password Reset Fields
+      resetCode: null,
+      resetCodeExpiry: null,
+      resetAttempts: 0,
+      
+      // Subscription - leave blank
+      subscription: {
+        active: false,
+        expiryDate: null,
+        yearsSubscribed: 0,
+        lastPaymentDate: null,
+        autoRenew: false
+      },
+      
+      // Leave arrays empty
+      subscriptionPayments: [],
+      courses: [],
+      cpdRecords: []
+    });
+
+    await newAlumni.save();
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Alumni registered successfully',
+      data: {
+        id: newAlumni._id,
+        firstName: newAlumni.firstName,
+        lastName: newAlumni.lastName,
+        email: newAlumni.email
+      }
+    });
+  } catch (error) {
+    console.error('Alumni registration error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to register alumni',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 module.exports = router;
