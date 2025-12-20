@@ -14,10 +14,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'zoezi_secret';
 router.post('/register', async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const { firstName, lastName, email, phone, idNumber, dob, password } = req.body;
-    
+
     if (!firstName || !lastName || !email || !phone || !idNumber || !dob || !password) {
       await session.abortTransaction();
       session.endSession();
@@ -32,57 +32,75 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'User with this email or phone already exists' });
     }
 
+    // ADD THIS CHECK FOR EXISTING ALUMNI ACCOUNT
+    const existingAlumni = await Alumni.findOne({
+      $or: [
+        { email: email.toLowerCase().trim() },
+        { phone: phone.trim() },
+        { idNumber: idNumber.trim() }
+      ]
+    }).session(session);
+
+    if (existingAlumni) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        status: 'error',
+        message: 'You already have an alumni profile. Please Login.'
+      });
+    }
+
     // Generate admission number
     const admissionNumber = await generateAdmissionNumber();
-    
+
     // Hash password
     const hashed = await bcrypt.hash(password, 10);
-    
+
     // Create user with admission number
-    const user = new User({ 
-      firstName, 
-      lastName, 
-      email, 
-      phone, 
-      idNumber, 
-      dob, 
+    const user = new User({
+      firstName,
+      lastName,
+      email,
+      phone,
+      idNumber,
+      dob,
       password: hashed,
       admissionNumber // Add the generated admission number
     });
-    
+
     await user.save({ session });
-    
+
     // Commit transaction
     await session.commitTransaction();
     session.endSession();
-    
-    return res.status(201).json({ 
-      status: 'success', 
+
+    return res.status(201).json({
+      status: 'success',
       message: 'Account created successfully',
       data: {
         admissionNumber: user.admissionNumber,
         userId: user._id
       }
     });
-    
+
   } catch (err) {
     // Abort transaction on error
     await session.abortTransaction();
     session.endSession();
-    
+
     console.error('Register error:', err);
-    
+
     // Handle duplicate admission number error (very rare but possible)
     if (err.code === 11000 && err.keyPattern && err.keyPattern.admissionNumber) {
-      return res.status(500).json({ 
-        status: 'error', 
-        message: 'Failed to generate unique admission number. Please try again.' 
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to generate unique admission number. Please try again.'
       });
     }
-    
-    return res.status(500).json({ 
-      status: 'error', 
-      message: 'Registration failed. Please try again.' 
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Registration failed. Please try again.'
     });
   }
 });
@@ -91,7 +109,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { userType, email, password } = req.body;
-    
+
     if (!email || !password) {
       return res.status(400).json({ status: 'error', message: 'Email and password are required' });
     }
@@ -138,25 +156,25 @@ router.post('/login', async (req, res) => {
 router.post('/change-password', async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const { currentPassword, newPassword, userType, userId } = req.body;
-    
+
     if (!currentPassword || !newPassword || !userType || !userId) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'All fields are required' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'All fields are required'
       });
     }
 
     if (newPassword.length < 6) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Password must be at least 6 characters' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Password must be at least 6 characters'
       });
     }
 
@@ -173,9 +191,9 @@ router.post('/change-password', async (req, res) => {
     } else {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Invalid user type' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
       });
     }
 
@@ -183,15 +201,15 @@ router.post('/change-password', async (req, res) => {
     if (!user) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        status: 'error', 
-        message: 'User not found' 
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
       });
     }
 
     // Verify current password
     let isValidCurrentPassword = false;
-    
+
     if (userType === 'student') {
       // Students always use bcrypt
       isValidCurrentPassword = await bcrypt.compare(currentPassword, user.password);
@@ -203,15 +221,15 @@ router.post('/change-password', async (req, res) => {
     if (!isValidCurrentPassword) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(401).json({ 
-        status: 'error', 
-        message: 'Current password is incorrect' 
+      return res.status(401).json({
+        status: 'error',
+        message: 'Current password is incorrect'
       });
     }
 
     // Hash new password
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-    
+
     // Update password
     user.password = hashedNewPassword;
     await user.save({ session });
@@ -219,18 +237,18 @@ router.post('/change-password', async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    return res.status(200).json({ 
-      status: 'success', 
-      message: 'Password changed successfully' 
+    return res.status(200).json({
+      status: 'success',
+      message: 'Password changed successfully'
     });
 
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
     console.error('Change password error:', err);
-    return res.status(500).json({ 
-      status: 'error', 
-      message: 'Failed to change password' 
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to change password'
     });
   }
 });
@@ -241,9 +259,9 @@ router.post('/user-data', async (req, res) => {
     const { userId, userType } = req.body;
 
     if (!userId || !userType) {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'User ID and user type are required' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'User ID and user type are required'
       });
     }
 
@@ -258,32 +276,32 @@ router.post('/user-data', async (req, res) => {
     } else if (userType === 'alumni') {
       model = Alumni;
     } else {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Invalid user type' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user type'
       });
     }
 
     // Find user and exclude password field
     user = await model.findById(userId).select('-password');
-    
+
     if (!user) {
-      return res.status(404).json({ 
-        status: 'error', 
-        message: 'User not found' 
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
       });
     }
 
-    return res.status(200).json({ 
-      status: 'success', 
-      data: { user } 
+    return res.status(200).json({
+      status: 'success',
+      data: { user }
     });
 
   } catch (err) {
     console.error('Get user data error:', err);
-    return res.status(500).json({ 
-      status: 'error', 
-      message: 'Failed to fetch user data' 
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch user data'
     });
   }
 });
