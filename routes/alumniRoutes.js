@@ -253,6 +253,36 @@ router.put('/:alumniId/update', upload.single('file'), async (req, res) => {
   }
 });
 
+// PUT /alumni/:alumniId/verify - Verify alumni information
+router.put('/:alumniId/verify', async (req, res) => {
+  try {
+    const { alumniId } = req.params;
+    
+    const alumnus = await Alumni.findByIdAndUpdate(
+      alumniId,
+      { adminVerified: true },
+      { new: true }
+    ).select('-password');
+    
+    if (!alumnus) {
+      return res.status(404).json({ status: 'error', message: 'Alumni not found' });
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Alumni verified successfully',
+      data: alumnus
+    });
+  } catch (err) {
+    console.error('Verify alumni error:', err);
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to verify alumni', 
+      error: err.message 
+    });
+  }
+});
+
 // PUT /alumni/:alumniId/public-profile - Update alumni's public profile info
 router.put('/:alumniId/public-profile', async (req, res) => {
   try {
