@@ -204,6 +204,317 @@ router.get('/profile', verifyToken, async (req, res) => {
   }
 })
 
+// GET /users/admin/list - Get all e-learning users with detailed information (ADMIN ONLY)
+router.get('/admin/list', async (req, res) => {
+  try {
+    const { page = 1, limit = 50, search = '', status = '' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Build query
+    let query = {};
+    
+    // Search filter
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      query.$or = [
+        { firstName: searchRegex },
+        { lastName: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+        { admissionNumber: searchRegex }
+      ];
+    }
+    
+    // Status filter
+    if (status === 'active') {
+      query['subscription.active'] = true;
+    } else if (status === 'inactive') {
+      query['subscription.active'] = false;
+    }
+    
+    // Get total count
+    const total = await User.countDocuments(query);
+    
+    // Get users with populated data
+    const users = await User.find(query)
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Get Group model for progress calculation
+    const Group = require('../models/Group');
+    
+    // Enrich users with course progress data
+    const usersWithProgress = await Promise.all(
+      users.map(async (user) => {
+        const userObj = user.toObject();
+        
+        // Calculate progress for each course
+        if (userObj.courses && userObj.courses.length > 0) {
+          userObj.courses = await Promise.all(
+            userObj.courses.map(async (course) => {
+              if (!course.assignedGroup?.groupId) {
+                return {
+                  ...course,
+                  progress: {
+                    percentage: 0,
+                    completed: 0,
+                    total: 0,
+                    nextItem: null
+                  }
+                };
+              }
+              
+              try {
+                const group = await Group.findById(course.assignedGroup.groupId);
+                if (!group || !group.curriculumItems || group.curriculumItems.length === 0) {
+                  return {
+                    ...course,
+                    progress: {
+                      percentage: 0,
+                      completed: 0,
+                      total: 0,
+                      nextItem: null
+                    }
+                  };
+                }
+                
+                // Calculate progress for this specific student
+                const totalItems = group.curriculumItems.length;
+                const completedItems = group.curriculumItems.filter(item => 
+                  item.isCompleted
+                ).length;
+                
+                const percentage = totalItems > 0 
+                  ? Math.round((completedItems / totalItems) * 100)
+                  : 0;
+                
+                // Find next item (not completed and released or no release date)
+                const now = new Date();
+                const nextItem = group.curriculumItems
+                  .filter(item => !item.isCompleted)
+                  .sort((a, b) => {
+                    // Sort by position if available, otherwise by release date
+                    if (a.position !== undefined && b.position !== undefined) {
+                      return a.position - b.position;
+                    }
+                    return 0;
+                  })[0];
+                
+                return {
+                  ...course,
+                  progress: {
+                    percentage,
+                    completed: completedItems,
+                    total: totalItems,
+                    nextItem: nextItem ? {
+                      name: nextItem.name,
+                      type: nextItem.type,
+                      position: nextItem.position
+                    } : null
+                  }
+                };
+              } catch (err) {
+                console.error(`Error calculating progress for course ${course._id}:`, err);
+                return {
+                  ...course,
+                  progress: {
+                    percentage: 0,
+                    completed: 0,
+                    total: 0,
+                    nextItem: null
+                  }
+                };
+              }
+            })
+          );
+        }
+        
+        // Calculate overall statistics
+        const stats = {
+          totalCourses: userObj.courses?.length || 0,
+          activeCourses: userObj.courses?.filter(c => c.assignmentStatus === 'ASSIGNED').length || 0,
+          certifiedCourses: userObj.courses?.filter(c => c.certificationStatus === 'CERTIFIED' || c.certificationStatus === 'GRADUATED').length || 0,
+          averageProgress: userObj.courses && userObj.courses.length > 0
+            ? Math.round(userObj.courses.reduce((sum, course) => sum + (course.progress?.percentage || 0), 0) / userObj.courses.length)
+            : 0
+        };
+        
+        return {
+          ...userObj,
+          stats
+        };
+      })
+    );
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        users: usersWithProgress,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Admin get users error:', err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch users',
+      error: err.message
+    });
+  }
+});
+
+// GET /users/admin/:id - Get detailed information for a specific user (ADMIN ONLY)
+router.get('/admin/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get user with all details
+    const user = await User.findById(id)
+      .select('-password')
+      .lean();
+    
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
+      });
+    }
+    
+    // Get Group model for progress calculation
+    const Group = require('../models/Group');
+    const Course = require('../models/Course');
+    
+    // Calculate detailed progress for each course
+    if (user.courses && user.courses.length > 0) {
+      user.courses = await Promise.all(
+        user.courses.map(async (course) => {
+          const courseWithDetails = { ...course };
+          
+          // Get course details if courseId exists
+          if (course.courseId) {
+            try {
+              const courseDetails = await Course.findById(course.courseId)
+                .select('name description coverImage duration durationType')
+                .lean();
+              courseWithDetails.details = courseDetails;
+            } catch (err) {
+              console.error(`Error fetching course details: ${err}`);
+            }
+          }
+          
+          // Calculate group progress if assigned to group
+          if (course.assignedGroup?.groupId) {
+            try {
+              const group = await Group.findById(course.assignedGroup.groupId)
+                .lean();
+              
+              if (group && group.curriculumItems) {
+                const totalItems = group.curriculumItems.length;
+                const completedItems = group.curriculumItems.filter(item => 
+                  item.isCompleted
+                ).length;
+                
+                const percentage = totalItems > 0 
+                  ? Math.round((completedItems / totalItems) * 100)
+                  : 0;
+                
+                // Get curriculum items with status
+                const curriculumItems = group.curriculumItems.map(item => ({
+                  name: item.name,
+                  type: item.type,
+                  position: item.position,
+                  isCompleted: item.isCompleted,
+                  releaseDate: item.releaseDate,
+                  dueDate: item.dueDate,
+                  isReleased: item.isReleased
+                }));
+                
+                courseWithDetails.progress = {
+                  percentage,
+                  completed: completedItems,
+                  total: totalItems,
+                  curriculumItems,
+                  nextItem: group.curriculumItems
+                    .filter(item => !item.isCompleted)
+                    .sort((a, b) => (a.position || 0) - (b.position || 0))[0] || null
+                };
+              }
+            } catch (err) {
+              console.error(`Error calculating group progress: ${err}`);
+              courseWithDetails.progress = {
+                percentage: 0,
+                completed: 0,
+                total: 0,
+                curriculumItems: [],
+                nextItem: null
+              };
+            }
+          } else {
+            courseWithDetails.progress = {
+              percentage: 0,
+              completed: 0,
+              total: 0,
+              curriculumItems: [],
+              nextItem: null
+            };
+          }
+          
+          return courseWithDetails;
+        })
+      );
+    }
+    
+    // Format dates for better readability
+    if (user.dob) user.dob = new Date(user.dob).toISOString().split('T')[0];
+    if (user.createdAt) user.createdAt = new Date(user.createdAt).toISOString();
+    if (user.cpdRecords) {
+      user.cpdRecords = user.cpdRecords.map(record => ({
+        ...record,
+        dateTaken: record.dateTaken ? new Date(record.dateTaken).toISOString().split('T')[0] : null
+      }));
+    }
+    
+    // Format subscription info
+    if (user.subscription) {
+      user.subscription.expiryDate = user.subscription.expiryDate 
+        ? new Date(user.subscription.expiryDate).toISOString().split('T')[0]
+        : null;
+      user.subscription.lastPaymentDate = user.subscription.lastPaymentDate
+        ? new Date(user.subscription.lastPaymentDate).toISOString().split('T')[0]
+        : null;
+    }
+    
+    // Format subscription payments
+    if (user.subscriptionPayments) {
+      user.subscriptionPayments = user.subscriptionPayments.map(payment => ({
+        ...payment,
+        paymentDate: payment.paymentDate ? new Date(payment.paymentDate).toISOString().split('T')[0] : null,
+        expiryDate: payment.expiryDate ? new Date(payment.expiryDate).toISOString().split('T')[0] : null,
+        createdAt: payment.createdAt ? new Date(payment.createdAt).toISOString().split('T')[0] : null
+      }));
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      data: user
+    });
+  } catch (err) {
+    console.error('Admin get user details error:', err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch user details',
+      error: err.message
+    });
+  }
+});
+
 // POST /users/enroll - enroll user in course (UPDATED)
 router.post('/enroll', verifyToken, async (req, res) => {
   const session = await mongoose.startSession()
