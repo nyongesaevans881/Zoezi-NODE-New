@@ -842,4 +842,116 @@ router.put('/:studentId/public-profile', async (req, res) => {
   }
 });
 
+
+
+
+
+
+// In your studentRoutes.js or similar
+
+// Record payment (both manual and M-PESA)
+router.post('/:id/record-payment', async (req, res) => {
+    try {
+        const studentId = req.params.id;
+        const { 
+            amount, 
+            paymentMethod, 
+            recordedBy, 
+            notes,
+            transactionType,
+            transactionId,
+            phone,
+            checkoutRequestId,
+            operation = 'add' // 'add' or 'deduct'
+        } = req.body;
+
+        const student = await Student.findById(studentId);
+        if (!student) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Student not found'
+            });
+        }
+
+        // Create payment record
+        const paymentRecord = {
+            amount: parseFloat(amount),
+            paymentMethod,
+            recordedBy,
+            notes,
+            transactionType: transactionType || 'manual',
+            status: 'complete',
+            operation,
+            createdAt: new Date()
+        };
+
+        // Add M-PESA specific fields if present
+        if (transactionType === 'mpesa') {
+            paymentRecord.transactionId = transactionId;
+            paymentRecord.phone = phone;
+            paymentRecord.checkoutRequestId = checkoutRequestId;
+        }
+
+        // Initialize paymentHistory array if it doesn't exist
+        if (!student.paymentHistory) {
+            student.paymentHistory = [];
+        }
+
+        // Add payment record to history
+        student.paymentHistory.push(paymentRecord);
+
+        // Update upfront fee based on operation
+        const currentUpfront = student.upfrontFee || 0;
+        if (operation === 'add') {
+            student.upfrontFee = currentUpfront + parseFloat(amount);
+        } else if (operation === 'deduct') {
+            student.upfrontFee = Math.max(0, currentUpfront - parseFloat(amount));
+        }
+
+        await student.save();
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Payment recorded successfully',
+            data: {
+                student,
+                paymentRecord
+            }
+        });
+    } catch (error) {
+        console.error('Record payment error:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Failed to record payment'
+        });
+    }
+});
+
+// Get payment history
+router.get('/:id/payment-history', async (req, res) => {
+    try {
+        const studentId = req.params.id;
+        const student = await Student.findById(studentId)
+            .select('paymentHistory');
+
+        if (!student) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Student not found'
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            data: student.paymentHistory || []
+        });
+    } catch (error) {
+        console.error('Get payment history error:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Failed to fetch payment history'
+        });
+    }
+});
+
 module.exports = router;

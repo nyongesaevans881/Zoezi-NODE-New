@@ -35,9 +35,41 @@ const studentSchema = new mongoose.Schema({
   
   // Finance
   courseFee: { type: Number },
-  upfrontFee: { type: Number },
   feePayer: { type: String, trim: true },
   feePayerPhone: { type: String, trim: true },
+  upfrontFee: { type: Number },
+
+      paymentHistory: [{
+        amount: { type: Number, required: true },
+        paymentMethod: { 
+            type: String, 
+            enum: ['cash', 'cheque', 'bank_transfer', 'paypal', 'mpesa', 'other'],
+            required: true 
+        },
+        recordedBy: { type: String, required: true },
+        notes: String,
+        transactionType: { 
+            type: String, 
+            enum: ['manual', 'mpesa'],
+            default: 'manual'
+        },
+        status: {
+            type: String,
+            enum: ['pending', 'complete', 'failed'],
+            default: 'complete'
+        },
+        operation: {
+            type: String,
+            enum: ['add', 'deduct'],
+            default: 'add'
+        },
+        // M-PESA specific fields
+        transactionId: String,
+        phone: String,
+        checkoutRequestId: String,
+        // Timestamps
+        createdAt: { type: Date, default: Date.now }
+    }],
   
   // Emergency Contact
   nextOfKinName: { type: String, trim: true },

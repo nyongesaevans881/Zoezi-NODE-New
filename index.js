@@ -62,41 +62,52 @@ app.get('/api/health', (req, res) => {
 // Admin Authentication Route
 app.post('/api/admin/auth', (req, res) => {
   try {
-    const { password } = req.body;
-    const adminPassword = process.env.ADMIN_PANEL_PASSWORD;
-
-    if (!adminPassword) {
+    const { username, password } = req.body;
+    
+    // Get credentials from environment variables
+    const ADMIN_USERS = process.env.ADMIN_USERS || "";
+    const ADMIN_PASSWORDS = process.env.ADMIN_PASSWORDS || "";
+    
+    if (!ADMIN_USERS || !ADMIN_PASSWORDS) {
       return res.status(500).json({
         status: 'error',
         message: 'Admin authentication not configured'
       });
     }
 
-    if (!password) {
+    if (!username || !password) {
       return res.status(400).json({
         status: 'error',
-        message: 'Password is required'
+        message: 'Username and password are required'
       });
     }
 
-    if (password === adminPassword) {
-      const expiryTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-      const expiryDate = new Date(Date.now() + expiryTime);
-
-      res.status(200).json({
-        status: 'success',
-        message: 'Authentication successful',
-        data: {
-          authenticated: true,
-          expiresAt: expiryDate.toISOString()
-        }
-      });
-    } else {
-      res.status(401).json({
+    // Parse comma-separated lists from .env
+    const validUsers = ADMIN_USERS.split(',').map(u => u.trim());
+    const validPasswords = ADMIN_PASSWORDS.split(',').map(p => p.trim());
+    
+    // Check if username exists and get its index
+    const userIndex = validUsers.indexOf(username);
+    
+    if (userIndex === -1 || password !== validPasswords[userIndex]) {
+      return res.status(401).json({
         status: 'error',
-        message: 'Invalid password'
+        message: 'Invalid username or password'
       });
     }
+
+    const expiryTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    const expiryDate = new Date(Date.now() + expiryTime);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Authentication successful',
+      data: {
+        authenticated: true,
+        username: username,
+        expiresAt: expiryDate.toISOString()
+      }
+    });
   } catch (error) {
     console.error('Admin auth error:', error);
     res.status(500).json({
