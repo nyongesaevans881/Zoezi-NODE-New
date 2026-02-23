@@ -50,6 +50,9 @@ app.use('/finance', require('./routes/financeRoutes'));
 app.use('/subscription', require('./routes/subscriptionRoutes'));
 app.use('/cpd', require('./routes/cpdRoutes'));
 
+// Isolated Goldchild server module (all Goldchild endpoints are namespaced under /goldchild)
+app.use('/goldchild', require('./goldchild/routes'));
+
 // Basic health check route
 app.get('/api/health', (req, res) => {
   res.status(200).json({
