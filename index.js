@@ -5,6 +5,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const http = require('http');
 const { startWebSocketServer } = require('./sockets/websocketState');
+const { connectGoldchildDB } = require('./goldchild/config/db');
 
 // Initialize app
 const app = express();
@@ -29,6 +30,15 @@ const connectDB = async () => {
 
 // Connect to database
 connectDB();
+
+// Connect Goldchild database at startup
+connectGoldchildDB().catch((error) => {
+  console.error(`Error connecting Goldchild database: ${error.message}`);
+
+  if (process.env.GOLDCHILD_DB_REQUIRED === 'true') {
+    process.exit(1);
+  }
+});
 
 // Use routes
 app.use('/applications', require('./routes/applicationRoutes'));

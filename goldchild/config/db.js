@@ -13,7 +13,12 @@ const connectGoldchildDB = async () => {
   }
 
   const mongoUri = process.env.GOLDCHILD_MONGODB_URI || process.env.MONGODB_URI;
-  const dbName = process.env.GOLDCHILD_DB_NAME || 'goldchild';
+  const configuredDbName = process.env.GOLDCHILD_DB_NAME || 'goldchild';
+  const dbName = configuredDbName.toLowerCase();
+
+  if (configuredDbName !== dbName) {
+    console.warn(`Goldchild DB name normalized from "${configuredDbName}" to "${dbName}" to avoid MongoDB case-conflict.`);
+  }
 
   if (!mongoUri) {
     throw new Error('Missing MongoDB URI for Goldchild. Set GOLDCHILD_MONGODB_URI or MONGODB_URI.');
