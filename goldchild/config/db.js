@@ -12,8 +12,12 @@ const connectGoldchildDB = async () => {
     return goldchildConnectionPromise;
   }
 
-  const mongoUri = process.env.GOLDCHILD_MONGODB_URI;
-  const dbName = process.env.GOLDCHILD_DB_NAME;
+  const mongoUri = process.env.GOLDCHILD_MONGODB_URI || process.env.MONGODB_URI;
+  const dbName = process.env.GOLDCHILD_DB_NAME || 'goldchild';
+
+  if (!mongoUri) {
+    throw new Error('Missing MongoDB URI for Goldchild. Set GOLDCHILD_MONGODB_URI or MONGODB_URI.');
+  }
 
   goldchildConnectionPromise = mongoose
     .createConnection(mongoUri, {
@@ -29,6 +33,7 @@ const connectGoldchildDB = async () => {
     })
     .catch((error) => {
       goldchildConnectionPromise = null;
+      console.error(`Goldchild DB connection failed: ${error.message}`);
       throw error;
     });
 
