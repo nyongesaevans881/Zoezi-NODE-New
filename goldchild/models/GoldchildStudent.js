@@ -9,20 +9,24 @@ const courseSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const goldchildStudentApplicationSchema = new mongoose.Schema(
+const goldchildStudentSchema = new mongoose.Schema(
   {
-    applicationNumber: {
+    // Admission Number (unique within Goldchild)
+    admissionNumber: {
       type: String,
       unique: true,
       index: true,
-      default: () => {
-        const currentYear = new Date().getFullYear();
-        const randomNum = Math.floor(Math.random() * 1000000)
-          .toString()
-          .padStart(6, '0');
-        return `GCA-${currentYear}-${randomNum}`;
-      }
+      required: true,
+      trim: true
     },
+
+    // Reference to Application
+    applicationRef: {
+      type: String,
+      required: true
+    },
+
+    // Personal Information (from application)
     personalInformation: {
       firstName: { type: String, required: true, trim: true },
       lastName: { type: String, required: true, trim: true },
@@ -33,50 +37,85 @@ const goldchildStudentApplicationSchema = new mongoose.Schema(
       citizenship: { type: String, required: true, trim: true },
       idOrPassportNumber: { type: String, required: true, trim: true }
     },
+
+    // Academic Information (from application)
     academicInformation: {
       highestQualification: { type: String, required: true, trim: true },
       kcseGradeOrEquivalent: { type: String, required: true, trim: true },
       course: { type: courseSchema, required: true },
-      preferredIntakeMonth: { type: String, required: true, trim: true },
-      preferredStartDate: { type: String, default: null },
       modeOfTraining: { type: String, required: true, trim: true }
     },
-    discoveryChannels: {
-      type: [String],
-      default: [],
-      validate: {
-        validator: (value) => Array.isArray(value) && value.length > 0,
-        message: 'At least one discovery channel is required.'
-      }
-    },
+
+    // Financial Information (from application)
     financialInformation: {
       feePayerName: { type: String, required: true, trim: true },
       feePayerPhoneNumber: { type: String, required: true, trim: true }
     },
+
+    // Next of Kin (from application)
     nextOfKin: {
       fullName: { type: String, required: true, trim: true },
       relationship: { type: String, required: true, trim: true },
       phoneNumber: { type: String, required: true, trim: true }
     },
-    declarations: {
-      rulesAccepted: { type: Boolean, required: true }
+
+    // Discovery Channels (from application)
+    discoveryChannels: {
+      type: [String],
+      default: []
     },
-    status: {
-      type: String,
-      enum: ['pending', 'admitted', 'rejected'],
-      default: 'pending',
-      index: true
+
+    // Admission Details (from admin admit form)
+    startDate: {
+      type: Date,
+      required: true
     },
-    rejectionReason: {
+
+    // Course Selection (from admin admit form - from Goldchild courses DB)
+    courseId: {
       type: String,
-      default: null,
+      required: true
+    },
+    courseName: {
+      type: String,
+      required: true,
       trim: true
     },
-    rejectedAt: {
-      type: Date,
+    duration: {
+      type: Number,
+      required: true
+    },
+    durationType: {
+      type: String,
+      enum: ['hours', 'days', 'weeks', 'months'],
+      required: true
+    },
+    courseFee: {
+      type: Number,
+      required: true
+    },
+
+    // Payment Information (from admin admit form)
+    upfrontFee: {
+      type: Number,
+      required: true,
+      default: 0
+    },
+
+    // Admin Notes (from admin admit form)
+    adminNotes: {
+      type: String,
+      trim: true,
       default: null
     },
-    submittedAt: { type: Date, default: Date.now }
+
+    // Status
+    status: {
+      type: String,
+      enum: ['active', 'inactive', 'suspended', 'completed'],
+      default: 'active',
+      index: true
+    }
   },
   {
     timestamps: true,
@@ -84,13 +123,13 @@ const goldchildStudentApplicationSchema = new mongoose.Schema(
   }
 );
 
-const getGoldchildStudentApplicationModel = (connection) => {
+const getGoldchildStudentModel = (connection) => {
   return (
-    connection.models.GoldchildStudentApplication ||
-    connection.model('GoldchildStudentApplication', goldchildStudentApplicationSchema)
+    connection.models.GoldchildStudent ||
+    connection.model('GoldchildStudent', goldchildStudentSchema)
   );
 };
 
 module.exports = {
-  getGoldchildStudentApplicationModel
+  getGoldchildStudentModel
 };

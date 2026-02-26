@@ -24,6 +24,12 @@ const studentSchema = new mongoose.Schema({
   preferredStartDate: { type: String, trim: true },
   startDate: { type: Date },
   
+  // Course Reference (from Goldchild DB)
+  courseId: { type: String }, // Reference to GoldchildCourse._id
+  courseName: { type: String, trim: true }, // Course name from DB
+  durationType: { type: String, enum: ['hours', 'days', 'weeks', 'months'] }, // Duration unit
+  adminNotes: { type: String, trim: true }, // Admin notes during admission
+  
   // Personal Details
   citizenship: { type: String, trim: true },
   idNumber: { type: String, trim: true },
