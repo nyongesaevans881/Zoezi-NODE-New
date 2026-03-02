@@ -8,28 +8,42 @@ const Course = require('../models/Course')
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zoezi_secret'
 
-function verifyToken(req, res, next) {
-  const auth = req.headers.authorization || req.headers.Authorization
-  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ status: 'error', message: 'Missing token' })
-  const token = auth.split(' ')[1]
-  try {
-    const payload = jwt.verify(token, JWT_SECRET)
-    req.userId = payload.id
-    req.userType = payload.type
-    next()
-  } catch (err) {
-    return res.status(401).json({ status: 'error', message: 'Invalid token' })
-  }
-}
 
-// GET /curriculums?tutorId=... - list curriculums for a tutor
-router.get('/', verifyToken, async (req, res) => {
+// GET /curriculums/courses/available - get courses that don't have curriculums yet
+router.get('/courses/available', async (req, res) => {
   try {
-    const tutorId = req.query.tutorId || req.userId
-    if (req.userType !== 'admin' && String(req.userId) !== String(tutorId)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
-    const curriculums = await Curriculum.find({ tutorId }).lean()
+    // Get all courses
+    const allCourses = await Course.find({ isArchived: false }).lean()
+    
+    // Get all curricula to find which courses already have curriculums
+    const curriculums = await Curriculum.find().select('courseId').lean()
+    const curriculumCourseIds = curriculums.map(c => String(c.courseId))
+    
+    // Filter courses that don't have curriculums
+    const availableCourses = allCourses.filter(c => !curriculumCourseIds.includes(String(c._id)))
+    
+    return res.status(200).json({ status: 'success', data: { courses: availableCourses } })
+  } catch (err) {
+    console.error('Get available courses error:', err)
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch courses' })
+  }
+})
+
+// GET /curriculums/courses/all - get all courses
+router.get('/courses/all', async (req, res) => {
+  try {
+    const allCourses = await Course.find({ isArchived: false }).lean()
+    return res.status(200).json({ status: 'success', data: { courses: allCourses } })
+  } catch (err) {
+    console.error('Get courses error:', err)
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch courses' })
+  }
+})
+
+// GET /curriculums - list all curriculums
+router.get('/', async (req, res) => {
+  try {
+    const curriculums = await Curriculum.find().lean()
     return res.status(200).json({ status: 'success', data: { curriculums } })
   } catch (err) {
     console.error('Get curriculums error:', err)
@@ -38,13 +52,11 @@ router.get('/', verifyToken, async (req, res) => {
 })
 
 // GET /curriculums/:id - get single curriculum with items
-router.get('/:id', verifyToken, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const curriculum = await Curriculum.findById(req.params.id)
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(curriculum.tutorId)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
+    
     return res.status(200).json({ status: 'success', data: { curriculum } })
   } catch (err) {
     console.error('Get curriculum error:', err)
@@ -53,19 +65,14 @@ router.get('/:id', verifyToken, async (req, res) => {
 })
 
 // POST /curriculums - create curriculum for a course
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const { tutorId, courseId } = req.body
-    const owner = tutorId || req.userId
-    
-    if (req.userType !== 'admin' && String(req.userId) !== String(owner)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
+    const { courseId } = req.body
     
     if (!courseId) return res.status(400).json({ status: 'error', message: 'Missing courseId' })
     
     // Check if curriculum already exists for this course
-    const existing = await Curriculum.findOne({ tutorId: owner, courseId })
+    const existing = await Curriculum.findOne({ courseId })
     if (existing) {
       return res.status(409).json({ status: 'error', message: 'Curriculum already exists for this course' })
     }
@@ -75,7 +82,6 @@ router.post('/', verifyToken, async (req, res) => {
     const courseName = course?.name || 'Unknown Course'
     
     const curriculum = await Curriculum.create({
-      tutorId: owner,
       courseId,
       courseName,
       items: []
@@ -89,13 +95,11 @@ router.post('/', verifyToken, async (req, res) => {
 })
 
 // DELETE /curriculums/:id - delete curriculum
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const curriculum = await Curriculum.findById(req.params.id)
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(curriculum.tutorId)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
+    
     await Curriculum.findByIdAndDelete(req.params.id)
     return res.status(200).json({ status: 'success', message: 'Curriculum deleted' })
   } catch (err) {
@@ -105,15 +109,12 @@ router.delete('/:id', verifyToken, async (req, res) => {
 })
 
 // POST /curriculums/:id/items - add item to curriculum
-router.post('/:id/items', verifyToken, async (req, res) => {
+router.post('/:id/items', async (req, res) => {
   try {
     const { type, name, description, attachments } = req.body // Changed from attachmentUrl, attachmentType
     const curriculum = await Curriculum.findById(req.params.id)
     
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(curriculum.tutorId)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
     
     if (!type || !name) {
       return res.status(400).json({ status: 'error', message: 'Missing required fields' })
@@ -143,15 +144,12 @@ router.post('/:id/items', verifyToken, async (req, res) => {
 })
 
 // PUT /curriculums/:id/items/:itemId - update item
-router.put('/:id/items/:itemId', verifyToken, async (req, res) => {
+router.put('/:id/items/:itemId', async (req, res) => {
   try {
     const { type, name, description, attachments } = req.body // Changed from attachmentUrl, attachmentType
     const curriculum = await Curriculum.findById(req.params.id)
     
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(curriculum.tutorId)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
     
     const item = curriculum.items.id(req.params.itemId)
     if (!item) return res.status(404).json({ status: 'error', message: 'Item not found' })
@@ -174,14 +172,11 @@ router.put('/:id/items/:itemId', verifyToken, async (req, res) => {
 })
 
 // DELETE /curriculums/:id/items/:itemId - delete item
-router.delete('/:id/items/:itemId', verifyToken, async (req, res) => {
+router.delete('/:id/items/:itemId', async (req, res) => {
   try {
     const curriculum = await Curriculum.findById(req.params.id)
     
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(curriculum.tutorId)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
     
     const item = curriculum.items.id(req.params.itemId)
     if (!item) return res.status(404).json({ status: 'error', message: 'Item not found' })
@@ -197,15 +192,12 @@ router.delete('/:id/items/:itemId', verifyToken, async (req, res) => {
 })
 
 // POST /curriculums/:id/reorder - reorder items by positions
-router.post('/:id/reorder', verifyToken, async (req, res) => {
+router.post('/:id/reorder', async (req, res) => {
   try {
     const { itemOrder } = req.body // array of item IDs in new order
     const curriculum = await Curriculum.findById(req.params.id)
     
     if (!curriculum) return res.status(404).json({ status: 'error', message: 'Curriculum not found' })
-    if (req.userType !== 'admin' && String(req.userId) !== String(curriculum.tutorId)) {
-      return res.status(403).json({ status: 'error', message: 'Forbidden' })
-    }
     
     if (!Array.isArray(itemOrder)) {
       return res.status(400).json({ status: 'error', message: 'itemOrder must be an array' })
@@ -225,6 +217,29 @@ router.post('/:id/reorder', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Reorder items error:', err)
     return res.status(500).json({ status: 'error', message: 'Failed to reorder items' })
+  }
+})
+
+// POST /curriculums/migrate/remove-tutor-id - remove tutorId from all curriculums
+router.post('/migrate/remove-tutor-id', async (req, res) => {
+  try {
+    // Find all curriculums with tutorId field
+    const result = await Curriculum.updateMany(
+      { tutorId: { $exists: true } },
+      { $unset: { tutorId: '' } }
+    )
+
+    return res.status(200).json({ 
+      status: 'success', 
+      message: 'Migration completed',
+      data: {
+        modifiedCount: result.modifiedCount,
+        matchedCount: result.matchedCount
+      }
+    })
+  } catch (err) {
+    console.error('Migration error:', err)
+    return res.status(500).json({ status: 'error', message: 'Migration failed' })
   }
 })
 

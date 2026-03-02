@@ -521,7 +521,7 @@ router.post('/enroll', verifyToken, async (req, res) => {
   session.startTransaction()
   try {
     // Accept either `paymentData` (frontend) or legacy `payment` body key
-    const { userId, courseId, userType } = req.body
+    const { userId, courseId, userType, curriculumId } = req.body
     const paymentData = req.body.paymentData || req.body.payment || {}
 
     // Ensure token user matches provided user or allow admins (not implemented)
@@ -580,7 +580,8 @@ router.post('/enroll', verifyToken, async (req, res) => {
       },
       enrolledAt: new Date(),
       assignmentStatus: 'PENDING',
-      tutor: null
+      tutor: null,
+      curriculum: curriculumId ? { curriculumId, assignedAt: new Date() } : null
     }
 
     user.courses = user.courses || []
@@ -646,6 +647,7 @@ router.post('/enroll', verifyToken, async (req, res) => {
       enrolledAt: enrollment.enrolledAt,
       assignmentStatus: enrollment.assignmentStatus,
       tutor: enrollment.tutor,
+      curriculum: enrollment.curriculum
     }
 
     return res.status(201).json({ status: 'success', data: { enrollment: populatedEnrollment } })
@@ -1289,5 +1291,124 @@ router.get('/dashboard/metrics', verifyToken, async (req, res) => {
     });
   }
 });
+
+// POST /users/discussions - Create a new discussion
+router.post('/discussions', verifyToken, async (req, res) => {
+  try {
+    const { title, curriculumId, itemId, initialMessage, attachments, userType } = req.body
+    const userId = req.userId
+
+    // Determine which model to use
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else {
+      return res.status(400).json({ status: 'error', message: 'Invalid user type' })
+    }
+
+    // Get user to get their name
+    const user = await model.findById(userId)
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'User not found' })
+    }
+
+    const userName = `${user.firstName} ${user.lastName}`
+
+    // Create discussion object
+    const discussion = {
+      _id: new mongoose.Types.ObjectId(),
+      curriculumId,
+      itemId,
+      title,
+      messages: initialMessage ? [
+        {
+          _id: new mongoose.Types.ObjectId(),
+          senderType: 'student',
+          senderId: userId,
+          senderName: userName,
+          message: initialMessage,
+          createdAt: new Date()
+        }
+      ] : [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+
+    // Add discussion to user
+    user.discussions = user.discussions || []
+    user.discussions.push(discussion)
+    await user.save()
+
+    return res.status(201).json({
+      status: 'success',
+      data: { discussion }
+    })
+  } catch (err) {
+    console.error('Create discussion error:', err)
+    return res.status(500).json({ status: 'error', message: 'Failed to create discussion' })
+  }
+})
+
+// POST /users/discussions/:discussionId/messages - Add message to discussion
+router.post('/discussions/:discussionId/messages', verifyToken, async (req, res) => {
+  try {
+    const { discussionId } = req.params
+    const { message, userType } = req.body
+    const userId = req.userId
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ status: 'error', message: 'Message cannot be empty' })
+    }
+
+    // Determine which model to use
+    let model;
+    if (userType === 'student') {
+      model = User;
+    } else if (userType === 'alumni') {
+      model = Alumni;
+    } else if (userType === 'tutor') {
+      model = Tutor;
+    } else {
+      return res.status(400).json({ status: 'error', message: 'Invalid user type' })
+    }
+
+    // Get user to get their name
+    const user = await model.findById(userId)
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'User not found' })
+    }
+
+    const userName = `${user.firstName} ${user.lastName}`
+    const senderType = userType === 'tutor' ? 'tutor' : 'student'
+
+    // Find and update discussion
+    const discussion = user.discussions.id(discussionId)
+    if (!discussion) {
+      return res.status(404).json({ status: 'error', message: 'Discussion not found' })
+    }
+
+    discussion.messages.push({
+      _id: new mongoose.Types.ObjectId(),
+      senderType,
+      senderId: userId,
+      senderName: userName,
+      message: message.trim(),
+      createdAt: new Date()
+    })
+
+    discussion.updatedAt = new Date()
+    await user.save()
+
+    return res.status(200).json({
+      status: 'success',
+      data: { discussion }
+    })
+  } catch (err) {
+    console.error('Add message error:', err)
+    return res.status(500).json({ status: 'error', message: 'Failed to add message' })
+  }
+})
 
 module.exports = router

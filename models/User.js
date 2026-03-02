@@ -100,10 +100,9 @@ const userSchema = new mongoose.Schema({
       assignmentStatus: { type: String, enum: ['PENDING', 'ASSIGNED', 'CANCELLED'], default: 'PENDING' },
       enrolledAt: { type: Date, default: Date.now },
       adminNotes: { type: String, default: '' },
-      isAssignedToGroup: { type: Boolean, default: false },
-      assignedGroup: {
-        groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
-        groupName: { type: String, default: null }
+      curriculum: {
+        curriculumId: { type: mongoose.Schema.Types.ObjectId, ref: 'Curriculum', default: null },
+        assignedAt: { type: Date, default: null }
       },
       tutor: {
         id: { type: mongoose.Schema.Types.ObjectId, ref: 'Tutor', default: null },
@@ -151,6 +150,28 @@ const userSchema = new mongoose.Schema({
   nextOfKinName: { type: String, trim: true },
   nextOfKinRelationship: { type: String, trim: true },
   nextOfKinPhone: { type: String, trim: true },
+
+  // Discussions - For student-tutor communication on curriculum items
+  discussions: [
+    {
+      _id: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+      curriculumId: { type: mongoose.Schema.Types.ObjectId, ref: 'Curriculum' },
+      itemId: { type: mongoose.Schema.Types.ObjectId }, // Reference to curriculum item
+      title: { type: String, required: true }, // Custom title or module name
+      messages: [
+        {
+          _id: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+          senderType: { type: String, enum: ['student', 'tutor'], required: true },
+          senderId: { type: mongoose.Schema.Types.ObjectId },
+          senderName: { type: String, required: true },
+          message: { type: String, required: true },
+          createdAt: { type: Date, default: Date.now }
+        }
+      ],
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }
+  ]
 });
 
 module.exports = mongoose.model('User', userSchema);

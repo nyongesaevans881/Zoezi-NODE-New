@@ -25,7 +25,6 @@ const curriculumItemSchema = new mongoose.Schema({
 })
 
 const curriculumSchema = new mongoose.Schema({
-  tutorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tutor', required: true },
   courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
   courseName: { type: String, default: '' },
   items: [curriculumItemSchema]
