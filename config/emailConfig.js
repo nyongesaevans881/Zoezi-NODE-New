@@ -908,10 +908,265 @@ const generatePasswordResetTemplate = (firstName, resetCode) => {
     `;
 };
 
+// Admin notification for new application
+const generateAdminApplicationNotificationTemplate = (applicantName, applicationNumber, email, phone, course, applicationDate) => {
+    const adminPanelUrl = process.env.ADMIN_PANEL_URL || 'https://zoezischool.com/admin';
+    
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Application Submission - Nairobi Zoezi School</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            padding: 40px 30px;
+            text-align: center;
+            border-radius: 0 0 20px 20px;
+        }
+        
+        .logo {
+            color: #ffffff;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+        
+        .tagline {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
+            font-weight: 400;
+        }
+        
+        .alert-badge {
+            display: inline-block;
+            background: #fff;
+            color: #e74c3c;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .greeting {
+            color: #e74c3c;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 20px;
+            line-height: 1.8;
+        }
+        
+        .application-card {
+            background: #f8f9fa;
+            border: 2px solid #e74c3c;
+            border-radius: 10px;
+            padding: 25px;
+            margin: 30px 0;
+        }
+        
+        .application-card h3 {
+            color: #e74c3c;
+            margin-bottom: 20px;
+            font-size: 18px;
+            border-bottom: 2px solid #e74c3c;
+            padding-bottom: 10px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .info-label {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .info-value {
+            color: #666;
+        }
+        
+        .action-box {
+            background: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 30px 0;
+        }
+        
+        .action-box h3 {
+            color: #856404;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .action-button {
+            display: inline-block;
+            background: #e74c3c;
+            color: #fff;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: #1a1a1a;
+            color: #ffffff;
+            border-radius: 20px 20px 0 0;
+        }
+        
+        .footer-text {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 10px;
+        }
+        
+        .contact {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+            }
+            
+            .header, .content {
+                padding: 30px 20px;
+            }
+            
+            .info-item {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">NAIROBI ZOEZI SCHOOL</div>
+            <div class="tagline">Excellence in Sports & Fitness Education</div>
+            <div class="alert-badge">🔔 NEW APPLICATION</div>
+        </div>
+        
+        <div class="content">
+            <h1 class="greeting">⚠️ New Application Received</h1>
+            
+            <p class="message">
+                A new application has been submitted and requires your review and attention.
+            </p>
+            
+            <div class="application-card">
+                <h3>📋 Applicant Information</h3>
+                <div class="info-item">
+                    <span class="info-label">Name:</span>
+                    <span class="info-value">${applicantName}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Email:</span>
+                    <span class="info-value">${email}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Phone:</span>
+                    <span class="info-value">${phone}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Course Applied:</span>
+                    <span class="info-value">${course}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Application #:</span>
+                    <span class="info-value"><strong>${applicationNumber}</strong></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Submitted:</span>
+                    <span class="info-value">${applicationDate}</span>
+                </div>
+            </div>
+            
+            <div class="action-box">
+                <h3>📌 Action Required</h3>
+                <p>Please review this application in your admin panel and take appropriate action:</p>
+                <ul style="margin-left: 20px; color: #856404;">
+                    <li>Approve or reject the application</li>
+                    <li>Add admin notes if needed</li>
+                    <li>Request additional information if required</li>
+                </ul>
+                <a href="${adminPanelUrl}" class="action-button">Go to Admin Panel</a>
+            </div>
+            
+            <p class="message" style="color: #c0392b; font-weight: 600;">
+                ⏰ Please review this application promptly to provide timely feedback to the applicant.
+            </p>
+        </div>
+        
+        <div class="footer">
+            <p class="footer-text">NAIROBI ZOEZI SCHOOL</p>
+            <p class="footer-text">Excellence in Sports & Fitness Education</p>
+            <p class="contact">Contact us: admissions@nairobi-zoezi.com | +254 746 139 413</p>
+            <p class="footer-text" style="margin-top: 15px;">
+                &copy; 2024 Nairobi Zoezi School. All rights reserved.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+    `;
+};
+
 module.exports = {
     transporter,
     generateApplicationConfirmationTemplate,
     generateStatusChangeTemplate,
     generateStudentWelcomeTemplate,
-    generatePasswordResetTemplate
+    generatePasswordResetTemplate,
+    generateAdminApplicationNotificationTemplate
 };

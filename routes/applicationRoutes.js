@@ -8,7 +8,7 @@ const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const bcrypt = require('bcrypt');
 const asyncHandler = require('express-async-handler');
-const { transporter, generateApplicationConfirmationTemplate, generateStatusChangeTemplate, generateStudentWelcomeTemplate } = require('../config/emailConfig');
+const { transporter, generateApplicationConfirmationTemplate, generateStatusChangeTemplate, generateStudentWelcomeTemplate, generateAdminApplicationNotificationTemplate } = require('../config/emailConfig');
 
 // Multer in-memory storage for file uploads
 const storage = multer.memoryStorage();
@@ -143,6 +143,41 @@ router.post('/', async (req, res) => {
             // Update emailSent flag
             savedApplication.emailSent = true;
             await savedApplication.save();
+
+            // Send admin notification email
+            const adminEmail = process.env.ADMIN_EMAIL;
+            const adminCCEmail = process.env.ADMIN_CC_EMAIL;
+            const adminNotificationTemplate = generateAdminApplicationNotificationTemplate(
+                `${firstName} ${lastName}`,
+                applicationNumber,
+                email,
+                phone,
+                course,
+                new Date().toLocaleString('en-US', { 
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                })
+            );
+
+            const adminMailOptions = {
+                from: process.env.ZOEZI_EMAIL,
+                to: adminEmail,
+                cc: adminCCEmail,
+                subject: `[NEW APPLICATION] ${firstName} ${lastName} - ${applicationNumber}`,
+                html: adminNotificationTemplate
+            };
+
+            try {
+                await transporter.sendMail(adminMailOptions);
+                console.log('Admin notification email sent successfully');
+            } catch (adminEmailError) {
+                console.error('Failed to send admin notification email:', adminEmailError);
+                // Continue - applicant notification was sent
+            }
 
             return res.status(201).json({
                 status: 'success',
@@ -422,6 +457,27 @@ router.post('/:applicationNumber/accept', upload.single('profilePicture'), async
         console.error('Error accepting application:', err);
         res.status(500).json({ status: 'error', message: 'Failed to accept application', error: err.message });
     }
+}));
+
+/**
+ * DELETE /api/applications/:applicationNumber
+ * Delete an application completely from the database
+ */
+router.delete('/:applicationNumber', asyncHandler(async (req, res) => {
+    const { applicationNumber } = req.params;
+
+    const application = await Application.findOne({ applicationNumber });
+    if (!application) {
+        return res.status(404).json({ status: 'error', message: 'Application not found' });
+    }
+
+    await Application.deleteOne({ _id: application._id });
+
+    res.status(200).json({
+        status: 'success',
+        message: `Application ${applicationNumber} has been permanently deleted`,
+        data: { applicationNumber }
+    });
 }));
 
 module.exports = router;
